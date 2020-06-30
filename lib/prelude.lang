@@ -1,0 +1,20 @@
+val pi = 3.14
+
+fun fst tup = case tup of (x,_) => x
+fun snd tup = case tup of (_,y) => y
+
+fun add x y = prim_int_add__ (x,y)
+fun sub x y = prim_int_sub__ (x,y)
+fun mul x y = prim_int_mul__ (x,y)
+fun div x y = prim_int_div__ (x,y)
+
+fun eq  x y = prim_eq__  (x,y)
+
+fun getLine x = prim_getline__ x
+fun putLine x = prim_putline__ x
+
+sig fact : Int -> Int
+fun fact n =
+  case n of
+  | 0 => 1
+  | n => mul n (fact (sub n 1))
