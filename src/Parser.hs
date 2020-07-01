@@ -17,6 +17,33 @@ import Lexer
 import Syntax
 
 ----------------------------------------
+-- | Parsing functions
+----------------------------------------
+-- | Parse the interactive input, either expression or declaration
+parseStdin :: FilePath -> Text -> Either ParseError (Either Expr Decl)
+parseStdin = parse (contents stdin)
+
+-- | Parse all top level binds in a source file
+parseSourceFile :: FilePath -> Text -> Either ParseError [Decl]
+parseSourceFile = parse (contents (many decl))
+
+-- | Parse a single expression
+parseExpr :: FilePath -> Text -> Either ParseError Expr
+parseExpr = parse (contents expr)
+
+-- | Parse a type
+parseType :: FilePath -> Text -> Either ParseError Type
+parseType = parse (contents type')
+
+-- | Parse a expression bind
+parseBind :: FilePath -> Text -> Either ParseError Bind
+parseBind = parse (contents bind)
+
+-- | Parse a top level declaration
+parseDecl :: FilePath -> Text -> Either ParseError Decl
+parseDecl = parse (contents decl)
+
+----------------------------------------
 -- | Stdin (either expression or declaration)
 ----------------------------------------
 
@@ -30,36 +57,11 @@ stdin = (Left <$> try expr) <|> (Right <$> try decl)
 decl :: Parser Decl
 decl =
   bindD
-  <|> sigD
-  <|> infixD
   <?> "top-level declaration"
 
 -- | Top level bindings
 bindD :: Parser Decl
 bindD = BindD <$> bind
-
--- | Type signatures
-sigD :: Parser Decl
-sigD = do
-  sig_
-  v <- identifier
-  colon_
-  t <- type'
-  return (SigD (Var v) t)
-
--- | Infix operators
-infixD :: Parser Decl
-infixD = do
-  f <- fixity
-  prec <- decimalLit
-  whiteSpace
-  op <- operator
-  equal_
-  v <- identifier
-  return (InfixD f prec (Var op) (Var v))
-
-fixity :: Parser Fixity
-fixity = (infixl_ $> L) <|> (infixr_ $> R) <|> (infix_ $> None)
 
 ----------------------------------------
 -- | Binds
@@ -68,6 +70,7 @@ fixity = (infixl_ $> L) <|> (infixr_ $> R) <|> (infix_ $> None)
 bind :: Parser Bind
 bind =
   valB
+  <|> try infixB
   <|> funB
   <?> "bind"
 
@@ -90,18 +93,23 @@ funB = do
   e <- expr
   return (FunB (Var f) (Var <$> args) e)
 
+-- | Infix operators
+infixB :: Parser Bind
+infixB = do
+  fun_
+  f <- parens operator
+  arg1 <- identifier
+  arg2 <- identifier
+  equal_
+  e <- expr
+  return (FunB (Var f) (Var <$> [arg1, arg2]) e)
+
 ----------------------------------------
 -- | Expressions
 ----------------------------------------
 
 expr :: Parser Expr
 expr =
-  try asE
-  <|> nonAsE
-  <?> "expression"
-
-nonAsE :: Parser Expr
-nonAsE =
   try infixE
   <|> try appE
   <|> letE
@@ -112,22 +120,14 @@ nonAsE =
   <|> sumE
   <?> "expression"
 
--- | Type annotated expressions
-asE :: Parser Expr
-asE = do
-  e <- nonAsE
-  colon_
-  t <- type'
-  return (AsE e t)
-
 -- | Infix operators
 infixE :: Parser Expr
 infixE =
-  customInfix
+  infixOp
   <?> "infix operator"
 
-customInfix :: Parser Expr
-customInfix = do
+infixOp :: Parser Expr
+infixOp = do
   e1 <- appE
   op <- operator
   e2 <- appE
@@ -144,6 +144,7 @@ atomE =
   <|> litE
   <|> try (parens expr)
   <|> tupE
+  <|> listE
   <?> "atom"
 
 -- | Literals
@@ -167,6 +168,12 @@ lamE = do
 -- | Note: unit expression is represented as (TupT [])
 tupE :: Parser Expr
 tupE = TupE <$> parens (expr `sepBy` comma_)
+
+-- | List expressions
+listE :: Parser Expr
+listE = do
+  exps <- brackets (expr `sepBy` comma_)
+  return (ListE exps)
 
 -- | Sum injections
 sumE :: Parser Expr
@@ -249,6 +256,7 @@ alt = do
 pat :: Parser Pat
 pat =
   try litP
+  <|> try listP
   <|> try tupP
   <|> try sumP
   <|> try varP
@@ -275,6 +283,27 @@ sumP = SumP <$> (Left <$> (left_ *> pat) <|>  Right <$> (right_ *> pat))
 -- | Wild patterns
 wildP :: Parser Pat
 wildP = wild_ $> WildP
+
+-- | List patterns
+listP :: Parser Pat
+listP =
+  try nilP
+  <|> consP
+  <?> "list pattern"
+
+nilP :: Parser Pat
+nilP = do
+  lbrack_
+  rbrack_
+  return (ListP NilP)
+
+consP :: Parser Pat
+consP = do
+  cons <- brackets $ do
+    hds <- pat `sepBy1` comma_
+    tl <- optionMaybe (pipe_ >> (varP <|> wildP))
+    return (ConsP hds tl)
+  return (ListP cons)
 
 ----------------------------------------
 -- | Types
@@ -312,6 +341,7 @@ nonSumT =
   <|> conT
   <|> try (parens type')
   <|> tupT
+  <|> listT
   <?> "non-sum type"
 
 -- | Type variables
@@ -327,30 +357,6 @@ conT = ConT . Var <$> identifierT
 tupT :: Parser Type
 tupT = TupT <$> parens (type' `sepBy` comma_)
 
-----------------------------------------
--- | Parsing functions
-----------------------------------------
-
--- | Parse a single expression
-parseExpr :: Text -> Either ParseError Expr
-parseExpr = parse (contents expr) "<interactive>"
-
--- | Parse a type
-parseType :: Text -> Either ParseError Type
-parseType = parse (contents type') "<interactive>"
-
--- | Parse a expression bind
-parseBind :: Text -> Either ParseError Bind
-parseBind = parse (contents bind) "<interactive>"
-
--- | Parse a top level declaration
-parseDecl :: Text -> Either ParseError Decl
-parseDecl = parse (contents decl) "<interactive>"
-
--- | Parse the interactive input, either expression or declaration
-parseStdin :: Text -> Either ParseError (Either Expr Decl)
-parseStdin = parse (contents stdin) "<interactive>"
-
--- | Parse all top level binds in a source file
-parseSourceFile :: FilePath -> Text -> Either ParseError [Decl]
-parseSourceFile = parse (contents (many decl))
+-- | List type
+listT :: Parser Type
+listT = ListT <$> brackets type'

@@ -1,66 +1,100 @@
-getLine "ghci> "
-getLine "ghci> "
-getLine "hey> "
-getLine "ghci> "
-ls
-getLine()
-getLine()
-getLine
-ls
-:l lib/prelude.lang 
-;s
-let val x = getLine (); val y = getLine () in (y,x) end
-let val x = getLine (); val y = getLine () in (x, y) end
-let val x = getLine (); val y = getLine () in (y, x) end
-let val x = getLine (); val y = getLine () in (x,y) end
-let x = getLine (); y = getLine () in (x,y) end
-getLine ()
-getLine 
+:! vim lib/prelude.jm 
+:! vim lib/prelude.jm 
+:! ls
+:! ghci
+:load 
+:load 
+:load 
+:l
+fun f x = 1 + false
+fun f 2 = 10
+fun f x = 10
+fun f x = 10
+fun f x = 10
+val f x = 10
+:t f
+f
+val f = 10
+val true = 10
+fact 10
+:browse lib/prelude.jm 
+:browse lib/deps.jm
+:browse lib/deps.jm 
 :browse 
-:l lib/prelude.lang 
-:l lib/prelude.lang 
-:l lib/prelude.lang 
-fst (10,20)
+:l lib/deps.jm 
+:browse 
+:browse 
+:l lib/deps.jm 
+:browse 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+:l lib/deps.jm 
+qux 
+:l lib/deps.jm 
 fact 5
-mul 2 3
-:l lib/prelude.lang 
-mul 2 3
-fact 5
-:l lib/prelude.lang 
+:t fact
+:info fst
+val id = (fn x => x) : Int -> a
+val id = fn x => x : Int -> a
+:t id
+val id = fn x => x
+sig id : Int -> a
+:t id'
+id'
+val id' = fn x => x
+:t id
+val id = fn x => x
+sig id : Int -> Int
+:t (fn x => x) : Int -> Int
+(fn x => x) : Int -> Int
+fn x => x
+id false
+id False
+:t id
+sig id : Int -> Int
+:t id
+fun id x = x
+sig id : Int -> Int
+:info id
+:t id
+sig id : Int -> Int
+:t id
+fun id x = x
+fn
+asdadsdad
+1 + false
+1 + false
+1 + false
+1 + false
+:info fact
+:t take 4 [1,2,3,4,5]
+take 4 [1,2,3,4,5]
+:info x y
+val y = 20
+:info x
+val x = 10
+:info x
+val x = 10
+x = 10
 x
-val x  = 10
-10
-fact 5
-:l lib/prelude.lang 
-:browse 
-fact 10
-:load lib/prelude.lang 
-:! vim lib/prelude.lang 
-:! cp ../lang/prelude.lang lib/
-:! ls lib/
-:! ls
-:shell ls
-:! ls -la
-:! ls
-:!
-:!
-:! ls
-:!ls
-:!ls
-ls
-fact 50
-fact 20
-fact 10
-:l ../lang/prelude.lang 
-fact 10
-fact 200
-fact 20
-fact 10
-:l ../lang/prelude.lang 
-:l ../lang/prelude.lang 
-:l ../lang/prelude.lang 
-:l ../lang/prelude.lang 
-fun f x = x x
-fun f x = \
-fun f x = 1e2
-fun f x = x
+:info x
+x
+val x = 5
+x
+val x = fn y => y
+x
+x

@@ -22,6 +22,7 @@ data Value =
   | ConV Var
   | TupV [Value]
   | SumV (Either Value Value)
+  | ListV [Value]
   | ClosureV (Thunk -> Eval Value)
   deriving Show
 
@@ -47,12 +48,12 @@ mkThunk e = Thunk (\() -> e)
 pureThunk :: Value -> Thunk
 pureThunk v = mkThunk (return v)
 
-createThunkRunner :: ValueEnv -> Var -> Expr -> (Thunk -> Eval Value)
+createThunkRunner :: EvalEnv -> Var -> Expr -> (Thunk -> Eval Value)
 createThunkRunner env var body = \th -> do
   ref <- liftIO $ newIORef th
   evalExpr (env `Env.extend` (var, ref)) body
 
-lookupThunkOf :: Var -> ValueEnv -> Eval (IORef Thunk)
+lookupThunkOf :: Var -> EvalEnv -> Eval (IORef Thunk)
 lookupThunkOf var venv = do
   case Env.lookup var venv of
     Just ref -> return ref
@@ -74,7 +75,14 @@ updateThunk ref th = do
 -- | Primitive operations
 ----------------------------------------
 
-newtype PrimOp = PrimOp (Value -> Eval Value)
+newtype PrimRunner = PrimRunner (Value -> Eval Value)
+
+data Prim = Prim
+  { primTy :: Scheme
+  , primRunner :: PrimRunner
+  }
+
+type PrimEnv = Env Prim
 
 ----------------------------------------
 -- | Evaluation Monad
@@ -82,8 +90,7 @@ newtype PrimOp = PrimOp (Value -> Eval Value)
 
 type Eval = ReaderT PrimEnv (ExceptT EvalError IO)
 
-type ValueEnv = Env (IORef Thunk)
-type PrimEnv = Env (Scheme, PrimOp)
+type EvalEnv = Env (IORef Thunk)
 
 -- | Run the evaluation monad
 runEval :: PrimEnv -> Eval a -> IO (Either EvalError a)
@@ -93,10 +100,10 @@ runEval penv m = runExceptT (flip runReaderT penv m)
 -- | Evaluating expressions
 ----------------------------------------
 
-evaluate :: ValueEnv -> PrimEnv -> Expr -> IO (Either EvalError Value)
+evaluate :: EvalEnv -> PrimEnv -> Expr -> IO (Either EvalError Value)
 evaluate venv penv expr = runEval penv (evalExpr venv expr)
 
-evalExpr :: ValueEnv -> Expr -> Eval Value
+evalExpr :: EvalEnv -> Expr -> Eval Value
 evalExpr env expr = do
   case expr of
     -- VarE
@@ -109,9 +116,10 @@ evalExpr env expr = do
       -- special case: primitive operations
       penv <- ask
       case fun of
-        VarE var | Just (_, PrimOp runner) <- Env.lookup var penv -> do
+        VarE var | Just prim <- Env.lookup var penv -> do
           argv <- evalExpr env arg
-          runner argv
+          let PrimRunner run = primRunner prim
+          run argv
         _ -> do
           ClosureV evalThunk <- evalExpr env fun
           evalThunk (mkThunk (evalExpr env arg))
@@ -159,9 +167,10 @@ evalExpr env expr = do
     SumE (Right e) -> do
       v <- evalExpr env e
       return (SumV (Right v))
-    -- AsE
-    AsE e _ -> do
-      evalExpr env e
+    -- LitE
+    ListE es -> do
+      vs <- mapM (evalExpr env) es
+      return (ListV vs)
 
 
 ----------------------------------------
@@ -171,23 +180,51 @@ evalExpr env expr = do
 matchAlts :: Value -> [Alt] -> Maybe (Alt, [(Var, Value)])
 matchAlts _ [] = Nothing
 matchAlts v (alt:alts)
-  | Just sub <- matches (getAltPat alt) v =
+  | Just sub <- match (getAltPat alt) v =
       Just (alt, sub)
   | otherwise =
       matchAlts v alts
 
-matches :: Pat -> Value -> Maybe [(Var, Value)]
-matches (LitP lp) (LitV lv) | lp == lv =
+match :: Pat -> Value -> Maybe [(Var, Value)]
+match (LitP lp) (LitV lv) | lp == lv =
   Just []
-matches (VarP var) val =
+match (VarP var) val =
   Just [(var, val)]
-matches WildP _ =
+match WildP _ =
   Just []
-matches (TupP ps) (TupV vs) =
-  concat <$> sequence (zipWith matches ps vs)
-matches (SumP (Left p)) (SumV (Left v)) =
-  matches p v
-matches (SumP (Right p)) (SumV (Right v)) =
-  matches p v
-matches _ _ =
+match (TupP ps) (TupV vs) =
+  concat <$> sequence (zipWith match ps vs)
+match (SumP (Left p)) (SumV (Left v)) =
+  match p v
+match (SumP (Right p)) (SumV (Right v)) =
+  match p v
+match (ListP NilP) (ListV []) =
+  Just []
+match (ListP (ConsP hds Nothing)) (ListV vs) =
+  matchList hds vs
+match (ListP (ConsP hds (Just tl))) (ListV vs) =
+  matchListWithTail tl hds vs
+match _ _ =
+  Nothing
+
+matchList :: [Pat] -> [Value] -> Maybe [(Var, Value)]
+matchList [] [] =
+  Just []
+matchList (p:ps) (v:vs) = do
+  sub <- match p v
+  subs <- matchList ps vs
+  return (sub <> subs)
+matchList _ _ =
+  Nothing
+
+matchListWithTail :: Pat -> [Pat] -> [Value] -> Maybe [(Var, Value)]
+matchListWithTail WildP [] _ =
+  Just []
+matchListWithTail (VarP v) [] vs =
+  Just [(v, ListV vs)]
+matchListWithTail tl (p:ps) (v:vs) = do
+  sub <- match p v
+  subs <- matchListWithTail tl ps vs
+  return (sub <> subs)
+matchListWithTail _ _ _ =
   Nothing

@@ -1,67 +1,74 @@
-module Prim where
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE OverloadedStrings #-}
+module Prim
+  ( environment
+  , boot
+  ) where
 
+import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy.IO as Text
-
 import Control.Monad.Except
 
 import qualified Env as Env
 
+import Infer
 import Syntax
+import Parser
 import Eval
+import Error
+
+boot :: FilePath
+boot = "<boot>"
 
 ----------------------------------------
 -- | Primitive operations
 ----------------------------------------
 
-primEnv :: PrimEnv
-primEnv = Env.fromList
-  [ prim "prim_int_add__"
-    (forAll [] ([intT, intT] --> intT)) $
-    \[LitV (IntL n1), LitV (IntL n2)] ->
-      return (LitV (IntL (n1+n2)))
-  , prim "prim_int_sub__"
-    (forAll [] ([intT, intT] --> intT)) $
-    \[LitV (IntL n1), LitV (IntL n2)] ->
-      return (LitV (IntL (n1-n2)))
-  , prim "prim_int_mul__"
-    (forAll [] ([intT, intT] --> intT)) $
-    \[LitV (IntL n1), LitV (IntL n2)] ->
-      return (LitV (IntL (n1*n2)))
-  , prim "prim_int_div__"
-    (forAll [] ([intT, intT] --> intT)) $
-     \[LitV (IntL n1), LitV (IntL n2)] ->
-       return (LitV (IntL (n1 `div` n2)))
-  , prim "prim_eq__"
-    (forAll ["a"] ([var "a", var "a"] --> boolT)) $
-    \[a, b] ->
-      return (LitV (BoolL (a == b)))
-  , prim "prim_getline__"
-    (forAll [] ([stringT] --> stringT)) $
-    \[LitV (StringL msg)] -> do
-      liftIO $ Text.putStr msg
-      str <- liftIO $ Text.getLine
-      return (LitV (StringL str))
-  , prim "prim_putline__"
-    (forAll [] ([stringT] --> unit)) $
-    \[LitV (StringL str)] -> do
-      liftIO $ Text.putStrLn str
-      return (TupV [])
+environment :: PrimEnv
+environment = Env.fromList
+  [ prim "prim_int_add__" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (x+y))
+  , prim "prim_int_sub__" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (x-y))
+  , prim "prim_int_mul__" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (x*y))
+  , prim "prim_int_div__" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (div x y))
+  , prim "prim_eq__"      "(a,a) -> Bool"    $ \(x :*: y)         -> pure (Bool (x==y))
+
+  , prim "prim_getline__" "() -> String" getline
+  , prim "prim_putline__" "String -> ()" putline
+
+  , prim "prim_list_cons__" "(a, [a]) -> [a]" cons
+
   ]
+
+getline :: Value -> Eval Value
+getline _ = String <$> liftIO Text.getLine
+
+putline :: Value -> Eval Value
+putline (String s) = unit <$> liftIO (Text.putStrLn s)
+putline _ = throwError (MarshallingError "putline")
+
+cons :: Value -> Eval Value
+cons (a :*: ListV as) = pure (ListV (a:as))
+cons _ = throwError (MarshallingError "cons")
 
 ----------------------------------------
 -- | Builders
 ----------------------------------------
 
-unit = TupT []
+prim :: Text -> Text -> (Value -> Eval Value) -> (Var, Prim)
+prim name tystr body = (Var name, Prim (closeOver ty) (PrimRunner body))
+  where Right ty = parseType boot tystr
 
-var x = VarT (mkTVar x)
+unit :: () -> Value
+unit _ = TupV []
 
-prim name ty body = (mkVar name, (ty, impl body))
+pattern Int :: Int -> Value
+pattern Int n = LitV (IntL n)
 
-forAll vs ty = Forall (mkTVar <$> vs) ty
+pattern Bool :: Bool -> Value
+pattern Bool b = LitV (BoolL b)
 
-args --> ret = TupT args :->: ret
+pattern String :: Text -> Value
+pattern String s = LitV (StringL s)
 
-impl body = PrimOp $ \x ->
-  case x of
-    TupV vs -> body vs
+pattern (:*:) :: Value -> Value -> Value
+pattern (:*:) x y = TupV [x, y]

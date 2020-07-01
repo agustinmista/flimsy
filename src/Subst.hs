@@ -56,12 +56,14 @@ instance Substitutable Type where
   apply s         (t1 :->: t2) = apply s t1 :->: apply s t2
   apply s         (t1 :+: t2)  = apply s t1 :+: apply s t2
   apply s         (TupT ts)    = TupT (apply s <$> ts)
+  apply s         (ListT t)    = ListT (apply s t)
 
   ftv (VarT a)     = Set.singleton a
   ftv (ConT _)     = Set.empty
   ftv (t1 :->: t2) = ftv t1 `Set.union` ftv t2
   ftv (t1 :+: t2)  = ftv t1 `Set.union` ftv t2
   ftv (TupT ts)    = Set.unions (ftv <$> ts)
+  ftv (ListT t)    = ftv t
 
 instance Substitutable Scheme where
   apply (Subst s) (Forall as t) =

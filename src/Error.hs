@@ -3,17 +3,25 @@ module Error where
 import Syntax
 
 ----------------------------------------
+-- | Escape errors
+----------------------------------------
+
+data EscapeError =
+    CyclicDeclarations [Var]
+  deriving Show
+
+----------------------------------------
 -- | Type inference errors
 ----------------------------------------
 
 data TypeError =
-    UnificationFail     Type Type
+    InternalTypeCheckingError String
+  | UnificationFail     Type Type
   | InfiniteType        TVar Type
   | UnboundVariable     Var
   | UnificationMismatch [Type] [Type]
   | NonLinearPattern    Pat
   | TypeError :@ Expr
-  | InternalTypeCheckingError String
   deriving Show
 
 ----------------------------------------
@@ -22,5 +30,6 @@ data TypeError =
 
 data EvalError =
     InternalEvaluationError String
+  | MarshallingError String
   | NonExhaustiveCase Expr
   deriving Show

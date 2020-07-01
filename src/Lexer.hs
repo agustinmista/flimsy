@@ -12,7 +12,7 @@ import Text.Parsec.Token as Token
 
 langDef = LanguageDef
   { reservedOpNames =
-      [ ":", ",", "->", "=>", "|", "=", "_"]
+      [ ":", ",", "->", "=>", "|", "=", "_", "[", "]"]
   , reservedNames =
       [ "val", "fun", "sig"
       , "infix", "infixl", "infixr"
@@ -24,8 +24,8 @@ langDef = LanguageDef
       ]
   , identStart = lower
   , identLetter = alphaNum <|> oneOf "_'"
-  , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
-  , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
+  , opLetter = oneOf ":!#$%&*+./<=>?@\\^-~"
+  , opStart = oneOf ":!#$%&*+./<=>?@\\^-~"
   , commentLine = "#"
   , commentStart = ""
   , commentEnd = ""
@@ -64,17 +64,21 @@ reserved   = Token.reserved lexer
 symbol     = Token.symbol lexer
 
 
+pipe_    = void (Token.symbol lexer "|")
+darrow_  = void (Token.symbol lexer "=>")
+arrow_   = void (Token.symbol lexer "->")
+equal_   = void (Token.symbol lexer "=")
+wild_    = void (Token.symbol lexer "_")
+plus_    = void (Token.symbol lexer "+")
+-- minus_   = Token.reserved lexer "-"
+
 colon_   = void (Token.colon lexer)
 dot_     = void (Token.dot lexer)
 comma_   = void (Token.comma lexer)
 semi_    = void (Token.semi lexer)
-plus_    = Token.reserved lexer "+"
-minus_   = Token.reserved lexer "-"
-arrow_   = Token.reserved lexer "->"
-darrow_  = Token.reserved lexer "=>"
-pipe_    = Token.reserved lexer "|"
-equal_   = Token.reserved lexer "="
-wild_    = Token.reserved lexer "_"
+
+lbrack_  = Token.reserved lexer "["
+rbrack_  = Token.reserved lexer "]"
 val_     = Token.reserved lexer "val"
 fun_     = Token.reserved lexer "fun"
 sig_     = Token.reserved lexer "sig"
@@ -95,4 +99,4 @@ true_    = Token.reserved lexer "true"
 false_   = Token.reserved lexer "false"
 left_    = Token.reserved lexer "left"
 right_   = Token.reserved lexer "right"
-fn_      = Token.reserved lexer "fn" <|> Token.reserved lexer "λ"
+fn_      = Token.reserved lexer "fn"

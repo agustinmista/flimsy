@@ -9,9 +9,10 @@ module Env
   , elems
   , fromList
   , toList
+  , filter
   ) where
 
-import Prelude hiding (lookup)
+import Prelude hiding (lookup, filter)
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -60,3 +61,6 @@ fromList xs = Env (Map.fromList xs)
 
 toList :: Env a -> [(Var, a)]
 toList (Env env) = Map.toList env
+
+filter :: (a -> Bool) -> Env a -> Env a
+filter f (Env env) = Env (Map.filter f env)

@@ -32,6 +32,7 @@ executable jemaine
     Prim
     Subst
     Solve
+    Escape
   other-extensions:
     OverloadedStrings
     FlexibleInstances
@@ -45,6 +46,7 @@ executable jemaine
     parsec,
     pretty,
     repline == 0.3.0.0,
+    filepath,
     process,
     llvm-hs,
     llvm-hs-pure

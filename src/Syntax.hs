@@ -21,23 +21,8 @@ showVar = unpack . unVar
 ----------------------------------------
 
 data Decl =
-    BindD Bind
-  | SigD Var Type
-  | InfixD Fixity Integer Var Var
+  BindD Bind
   deriving (Show, Eq)
-
--- | Predicates
-isInfixD :: Decl -> Bool
-isInfixD InfixD {} = True
-isInfixD _         = False
-
-isBindD :: Decl -> Bool
-isBindD BindD {} = True
-isBindD _        = False
-
-isSigD :: Decl -> Bool
-isSigD SigD {} = True
-isSigD _       = False
 
 ----------------------------------------
 -- | Binds
@@ -73,7 +58,7 @@ data Expr =
   | FixE Expr
   | TupE [Expr]
   | SumE (Either Expr Expr)
-  | AsE Expr Type
+  | ListE [Expr]
   deriving (Show, Eq)
 
 ----------------------------------------
@@ -111,6 +96,12 @@ data Pat =
   | WildP
   | TupP [Pat]
   | SumP (Either Pat Pat)
+  | ListP ListP
+  deriving (Show, Eq)
+
+data ListP =
+    NilP
+  | ConsP [Pat] (Maybe Pat)
   deriving (Show, Eq)
 
 patVars :: Pat -> [Var]
@@ -118,19 +109,14 @@ patVars (VarP v) = [v]
 patVars (TupP ps) = concatMap patVars ps
 patVars (SumP (Left p)) = patVars p
 patVars (SumP (Right p)) = patVars p
+patVars (ListP (ConsP hds Nothing)) = concatMap patVars hds
+patVars (ListP (ConsP hds (Just tl))) = concatMap patVars hds <> patVars tl
 patVars _ = []
 
 nonLinear :: Pat -> Bool
 nonLinear pat =
   length (nub pvs) < length pvs
   where pvs = patVars pat
-
-----------------------------------------
--- | Fixities
-----------------------------------------
-
-data Fixity = L | R | None
-  deriving (Show, Eq)
 
 ----------------------------------------
 -- | Types
@@ -142,6 +128,7 @@ data Type =
   | Type :->: Type
   | Type :+: Type
   | TupT [Type]
+  | ListT Type
   deriving (Show, Eq, Ord)
 
 infix  :+:

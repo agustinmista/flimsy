@@ -1,0 +1,10 @@
+
+val c = e
+
+val b = (c, d)
+
+val a = b
+
+val e = 10
+
+val d = e

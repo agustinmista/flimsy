@@ -6,8 +6,6 @@ import Control.Monad.Except
 import Control.Monad.State
 import Control.Monad.Reader
 
-import Data.List (nub)
-
 import Env (Env)
 import qualified Env as Env
 
@@ -16,16 +14,21 @@ import Subst
 import Solve
 import Error
 
+import Debug.Trace
+
+debug :: Monad m => String -> m ()
+debug msg = trace msg (return ())
+
 ----------------------------------------
 -- | Inference monad
 ----------------------------------------
 
-type Infer = ReaderT TypeEnv (StateT InferState (Except TypeError))
+type Infer = ReaderT TcEnv (StateT InferState (Except TypeError))
 
-type TypeEnv = Env Scheme
+type TcEnv = Env Scheme
 
 -- | Run the inference monad
-runInfer :: TypeEnv -> Infer a -> Either TypeError a
+runInfer :: TcEnv -> Infer a -> Either TypeError a
 runInfer env m = runExcept (flip evalStateT initInfer (runReaderT m env))
 
 -- | Inference state
@@ -66,14 +69,14 @@ inExtEnv (var, tsc) m = do
 -- | Inferring type of expressions
 ----------------------------------------
 
-typeOfExpr :: TypeEnv -> Expr -> Either TypeError Scheme
+typeOfExpr :: TcEnv -> Expr -> Either TypeError Scheme
 typeOfExpr env expr = do
   (ty, cs) <- runInfer env (inferExpr expr)
   case runSolve cs of
     Left err -> throwError (err :@ expr)
     Right subst -> return (closeOver (apply subst ty))
 
-constraintsOfExpr :: TypeEnv -> Expr -> Either TypeError ([Constraint], Subst, Type, Scheme)
+constraintsOfExpr :: TcEnv -> Expr -> Either TypeError ([Constraint], Subst, Type, Scheme)
 constraintsOfExpr env expr = do
   (ty, cs) <- runInfer env (inferExpr expr)
   case runSolve cs of
@@ -135,7 +138,7 @@ inferExpr expr = do
       (tas, cs) <- unzip <$> mapM (inferCaseAlt expr te) alts
       -- let csas = [(te, ta) | ta <- tas]
       case tas of
-        [] -> error "inferExpr: unexpected empty case"
+        [] -> throwError (InternalTypeCheckingError "unexpected empty case on CaseE")
         (t:ts) -> do
           let csb = [(t,t') | t' <- ts]
           return (t, ce <> concat cs <> csb)
@@ -157,10 +160,15 @@ inferExpr expr = do
       tv <- freshTVar
       (t1, c1) <- inferExpr e
       return (tv :+: t1, c1)
-    -- AsE
-    AsE e t -> do
-      (t1, c1) <- inferExpr e
-      return (t, c1 <> [(t, t1)])
+    -- ListE
+    ListE [] -> do
+      tv <- freshTVar
+      return (ListT tv, [])
+    ListE (e:es) -> do
+      (t, c) <- inferExpr e
+      (ts, cs) <- unzip <$> mapM inferExpr es
+      let lcs = [ (t,t') | t' <- ts ]
+      return (ListT t, c <> concat cs <> lcs)
 
 ----------------------------------------
 -- | Inferring case alternatives
@@ -173,7 +181,7 @@ inferCaseAlt caseE te (Alt pat body) = do
   -- first check that the type of the pattern unifies
   -- with the type of the scrutinee and obtain a substitution
   -- for its pattern variables
-  (tp, tscs) <- inferPat pat
+  (tp, csp, tscs) <- inferPat pat
   case runSolve [(te, tp)] of
     Left err -> throwError (err :@ caseE)
     Right sub -> do
@@ -181,49 +189,67 @@ inferCaseAlt caseE te (Alt pat body) = do
       -- alternative and infer its type
       let patVarTys = fmap (apply sub) <$> tscs
       let withPatVarsInScope m = foldr inExtEnv m patVarTys
-      (tb, cb) <- withPatVarsInScope (local (apply sub) (inferExpr body))
-      return (tb, cb <> [(te, tp)])
+      (tb, csb) <- withPatVarsInScope (local (apply sub) (inferExpr body))
+      return (tb, csp <> csb <> [(te, tp)])
 
 ----------------------------------------
 -- | Inferring type of patterns
 ----------------------------------------
 
-typeOfPat :: Pat -> Either TypeError (Scheme, [(Var, Scheme)])
+typeOfPat :: Pat -> Either TypeError (Scheme, [Constraint], [(Var, Scheme)])
 typeOfPat pat = do
-  (ty, ins) <- runInfer Env.empty (inferPat pat)
-  return (closeOver ty, ins)
+  (ty, cs, ins) <- runInfer Env.empty (inferPat pat)
+  return (closeOver ty, cs, ins)
 
-inferPat :: Pat -> Infer (Type, [(Var, Scheme)])
+inferPat :: Pat -> Infer (Type, [Constraint], [(Var, Scheme)])
 inferPat pat =
   local (const Env.empty) $ do
     case pat of
       -- LitP
-      LitP (IntL _) -> return (intT, [])
-      LitP (DoubleL _) -> return (doubleT, [])
-      LitP (StringL _) -> return (stringT, [])
-      LitP (BoolL _) -> return (boolT, [])
-      LitP (CharL _) -> return (charT, [])
+      LitP (IntL _) -> return (intT, [], [])
+      LitP (DoubleL _) -> return (doubleT, [], [])
+      LitP (StringL _) -> return (stringT, [], [])
+      LitP (BoolL _) -> return (boolT, [], [])
+      LitP (CharL _) -> return (charT, [], [])
       -- VarP
       VarP v -> do
         tv <- freshTVar
-        return (tv, [(v, Forall [] tv)])
+        return (tv, [], [(v, Forall [] tv)])
       -- WildP
       WildP -> do
         tv <- freshTVar
-        return (tv, [])
+        return (tv, [], [])
       -- TupP
       TupP ps -> do
-        (ts, ins) <- unzip <$> mapM inferPat ps
-        return (TupT ts, concat ins)
+        (ts, css, inss) <- unzip3 <$> mapM inferPat ps
+        return (TupT ts, concat css, concat inss)
       -- SumP
       SumP (Left p) -> do
         tv <- freshTVar
-        (t1, ins) <- inferPat p
-        return (t1 :+: tv, ins)
+        (t1, cs, ins) <- inferPat p
+        return (t1 :+: tv, cs, ins)
       SumP (Right p) -> do
         tv <- freshTVar
-        (t1, ins) <- inferPat p
-        return (tv :+: t1, ins)
+        (t1, cs, ins) <- inferPat p
+        return (tv :+: t1, cs, ins)
+      -- ListP
+      ListP NilP -> do
+        tv <- freshTVar
+        return (ListT tv, [], [])
+      ListP (ConsP [] _) -> do
+        throwError (InternalTypeCheckingError "unexpected empty list pattern")
+      ListP (ConsP (hd:hds) Nothing) -> do
+        (hdt,  hdcs, hdins) <- inferPat hd
+        (hdts, hdcss, hdinss) <- unzip3 <$> mapM inferPat hds
+        let cs = [ (hdt, t') | t' <- hdts ]
+        return (ListT hdt, hdcs <> concat hdcss <> cs, hdins <> concat hdinss)
+      ListP (ConsP (hd:hds) (Just tl)) -> do
+        (hdt,  hdcs, hdins) <- inferPat hd
+        (hdts, hdcss, hdinss) <- unzip3 <$> mapM inferPat hds
+        (tlt, tlcs, tlins) <- inferPat tl
+        let cs = [ (hdt, t') | t' <- hdts ] <> [(tlt, ListT hdt)]
+        return (ListT hdt, hdcs <> concat hdcss <> tlcs <> cs,
+                 hdins <> concat hdinss <> tlins)
 
 patToExpr :: Pat -> Expr
 patToExpr (LitP l) = LitE l
@@ -232,6 +258,9 @@ patToExpr WildP = VarE (mkVar "_")
 patToExpr (TupP ps) = TupE (patToExpr <$> ps)
 patToExpr (SumP (Left p)) = SumE (Left (patToExpr p))
 patToExpr (SumP (Right p)) = SumE (Right (patToExpr p))
+patToExpr (ListP NilP) = ListE []
+patToExpr (ListP (ConsP hds Nothing)) = ListE (patToExpr <$> hds)
+patToExpr (ListP (ConsP hds (Just _))) = ListE ((patToExpr <$> hds) <> [VarE (mkVar "...")])
 
 ----------------------------------------
 -- | Helpers
@@ -240,7 +269,6 @@ patToExpr (SumP (Right p)) = SumE (Right (patToExpr p))
 -- | Canonicalize and return the polymorphic toplevel type
 closeOver :: Type -> Scheme
 closeOver = normalize . generalize Env.empty
-
 
 -- | Type variables supply
 letters :: [TVar]
@@ -254,7 +282,7 @@ letters = mkTVar <$> names
       , n <- [0 :: Int ..]
       ]
 
-generalize :: TypeEnv -> Type -> Scheme
+generalize :: TcEnv -> Type -> Scheme
 generalize env t = Forall as t
   where
     as = toList (ftv t `difference` ftv env)
@@ -263,13 +291,14 @@ normalize :: Scheme -> Scheme
 normalize (Forall _ body) =
   Forall (snd <$> ord) (normtype body)
   where
-    ord = zip (nub (fv body)) letters
+    ord = zip (toList (ftv body)) letters
 
-    fv (VarT a)   = [a]
-    fv (ConT _)   = []
-    fv (a :->: b) = fv a <> fv b
-    fv (a :+: b)  = fv a <> fv b
-    fv (TupT ts)  = concatMap fv ts
+    -- fv (VarT a)   = [a]
+    -- fv (ConT _)   = []
+    -- fv (a :->: b) = fv a <> fv b
+    -- fv (a :+: b)  = fv a <> fv b
+    -- fv (TupT ts)  = concatMap fv ts
+    -- fv (ListT t)  = fv t
 
     normtype (VarT a) =
       case lookup a ord of
@@ -279,3 +308,4 @@ normalize (Forall _ body) =
     normtype (a :->: b) = normtype a :->: normtype b
     normtype (a :+: b) = normtype a :+: normtype b
     normtype (TupT ts) = TupT (normtype <$> ts)
+    normtype (ListT t) = ListT (normtype t)

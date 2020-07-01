@@ -5,6 +5,7 @@ module Pretty
   , pretty
   ) where
 
+import Prelude hiding ((<>))
 import Text.Parsec (ParseError)
 import Text.PrettyPrint
 
@@ -42,15 +43,6 @@ instance Pretty Var where
 instance Pretty Decl where
   ppr _ (BindD b) =
     pp b
-  ppr _ (SigD v t) =
-    text "sig" <+> pp v <+> colon <+> pp t
-  ppr _ (InfixD f p op v) =
-    pp f <+> text (show p) <+> pp op <+> equals <+> pp v
-
-instance Pretty Fixity where
-  ppr _ L    = text "infixl"
-  ppr _ R    = text "infixr"
-  ppr _ None = text "infix"
 
 ----------------------------------------
 -- | Binds
@@ -104,7 +96,6 @@ instance Pretty Expr where
   ppr p (InfixE op e1 e2) =
     parensIf (p > 0) $
       pp' e1 <+> pp op <+> pp' e2
-
   -- | If then else expressions
   ppr p (IfE b th el) =
     parensIf (p > 0) $
@@ -123,7 +114,7 @@ instance Pretty Expr where
   -- | tuples
   ppr _ (TupE es) =
     parens $
-      sep (punctuate comma (pp <$> es))
+      cat (punctuate comma (pp <$> es))
   -- | sum injections
   ppr p (SumE (Left l)) =
     parensIf (p > 0) $
@@ -131,10 +122,11 @@ instance Pretty Expr where
   ppr p (SumE (Right r)) =
     parensIf (p > 0) $
       text "right" <+> pp' r
+  ppr _ (ListE []) =
+    text "[]"
+  ppr _ (ListE xs) =
+    lbrack <> cat (punctuate comma (pp <$> xs)) <> rbrack
   -- | type annotations
-  ppr p (AsE e t) =
-    parensIf (p > 0) $
-      pp e <+> colon <+> pp t
 
 ----------------------------------------
 -- | Case alternatives
@@ -148,12 +140,30 @@ instance Pretty Alt where
 ----------------------------------------
 
 instance Pretty Pat where
-  ppr _ (LitP l) = pp l
-  ppr _ (VarP v) = pp v
-  ppr _ WildP = text "_"
-  ppr _ (TupP ps) = parens (sep (punctuate comma (pp <$> ps)))
-  ppr _ (SumP (Left l)) = text "left" <+> pp l
-  ppr _ (SumP (Right r)) = text "right" <+> pp r
+  ppr _ (LitP l) =
+    pp l
+  ppr _ (VarP v) =
+    pp v
+  ppr _ WildP =
+    text "_"
+  ppr _ (TupP ps) =
+    parens $
+      cat (punctuate comma (pp <$> ps))
+  ppr _ (SumP (Left l)) =
+    text "left" <+> pp l
+  ppr _ (SumP (Right r)) =
+    text "right" <+> pp r
+  ppr _ (ListP p) =
+    pp p
+
+instance Pretty ListP where
+  ppr _ NilP = text "[]"
+  ppr _ (ConsP ps Nothing) =
+    brackets $
+      cat (punctuate comma (pp <$> ps))
+  ppr _ (ConsP hds (Just tl)) =
+    brackets $
+      cat (punctuate comma (pp <$> hds)) <> text "|" <> pp tl
 
 ----------------------------------------
 -- | Literals
@@ -179,11 +189,14 @@ instance Pretty Type where
   ppr p (t1 :->: t2) =
     parensIf (p > 0) $
       ppr (p+1) t1 <+> text "->" <+> ppr p t2
-  ppr _ (t1 :+: t2) =
-    pp t1 <+> text "+" <+> pp t2
   ppr _ (TupT ts) =
     parens $
-      sep (punctuate comma (pp <$> ts))
+      cat (punctuate comma (pp <$> ts))
+  ppr _ (t1 :+: t2) =
+    pp t1 <+> text "+" <+> pp t2
+  ppr _ (ListT t) =
+    brackets $
+      pp t
 
 ----------------------------------------
 -- | Type schemes
@@ -196,7 +209,7 @@ instance Pretty Scheme where
   ppr _ (Forall [] t) =
     pp t
   ppr _ (Forall tv t) =
-    text "forall" <+> hsep (pp <$> tv) <+> char '.' <+> pp t
+    text "∀" <+> hsep (pp <$> tv) <+> char '.' <+> pp t
 
 ----------------------------------------
 -- | Errors
@@ -206,6 +219,12 @@ instance Pretty ParseError where
   ppr _ s =
     text "parse error!"
     $+$ text (show s)
+
+instance Pretty EscapeError where
+  ppr _ (CyclicDeclarations vs) =
+    text "dependency error!"
+    $+$ text "declarations form a cycle:"
+    $+$ hsep (punctuate (text " ->") (pp <$> (last vs : vs)))
 
 instance Pretty TypeError where
   ppr _ (UnificationFail t1 t2) =
@@ -242,6 +261,10 @@ instance Pretty EvalError where
   ppr _ (InternalEvaluationError msg) =
     text "runtime error!"
     $+$ text msg
+  ppr _ (MarshallingError ident) =
+    text "runtime error!"
+    $+$ text "bad marshalling of primitive:"
+    $+$ text ident
   ppr _ (NonExhaustiveCase expr) =
     text "runtime error!"
     $+$ text "non-exhaustive patterns in case"
@@ -259,13 +282,16 @@ instance Pretty Value where
     pp v
   ppr _ (TupV vs) =
     parens $
-      sep (punctuate comma (pp <$> vs))
+      cat (punctuate comma (pp <$> vs))
   ppr p (SumV (Left l)) =
     parensIf (p > 0) $
       text "left" <+> pp' l
   ppr p (SumV (Right r)) =
     parensIf (p > 0) $
       text "right" <+> pp' r
+  ppr _ (ListV vs) =
+    brackets $
+      cat (punctuate comma (pp <$> vs))
   ppr _ (ClosureV {}) =
     text "<<function>>"
 
