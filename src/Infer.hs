@@ -13,6 +13,7 @@ import Syntax
 import Subst
 import Solve
 import Error
+import Pretty
 
 import Debug.Trace
 
@@ -89,6 +90,10 @@ inferExpr expr = do
     -- VarE
     VarE x -> do
       t <- lookupTypeOf expr x
+      case t of
+        IOT t' ->
+          debug $ pretty x <> " : " <> pretty (IOT t')
+        _ -> return ()
       return (t, [])
     -- AppE
     AppE e1 e2 -> do
@@ -103,7 +108,7 @@ inferExpr expr = do
       return (tv :->: t, c)
     -- LetE
     LetE b e2 -> do
-      let (var, e1) = getBind b
+      let (var, e1, _) = getBind b
       env <- ask
       (t1, c1) <- inferExpr e1
       case runSolve c1 of
@@ -125,13 +130,13 @@ inferExpr expr = do
       (t2, c2) <- inferExpr e2
       tv <- freshTVar
       let u1 = t1 :->: (t2 :->: tv)
-      return (tv, c1 <> c2 <> [(opt, u1)])
+      return (tv, c1 <> c2 <> [(u1, opt)])
     -- IfE
     IfE cond tr fl -> do
       (t1, c1) <- inferExpr cond
       (t2, c2) <- inferExpr tr
       (t3, c3) <- inferExpr fl
-      return (t2, c1 <> c2 <> c3 <> [(t1, boolT), (t2, t3)])
+      return (t2, c1 <> c2 <> c3 <> [(boolT, t1), (t2, t3)])
     -- CaseE
     CaseE e alts -> do
       (te, ce) <- inferExpr e
@@ -169,6 +174,9 @@ inferExpr expr = do
       (ts, cs) <- unzip <$> mapM inferExpr es
       let lcs = [ (t,t') | t' <- ts ]
       return (ListT t, c <> concat cs <> lcs)
+    -- DoE
+    DoE stmts ->
+      inferDo stmts
 
 ----------------------------------------
 -- | Inferring case alternatives
@@ -247,20 +255,46 @@ inferPat pat =
         (hdt,  hdcs, hdins) <- inferPat hd
         (hdts, hdcss, hdinss) <- unzip3 <$> mapM inferPat hds
         (tlt, tlcs, tlins) <- inferPat tl
-        let cs = [ (hdt, t') | t' <- hdts ] <> [(tlt, ListT hdt)]
+        let cs = [ (hdt, t') | t' <- hdts ] <> [(ListT hdt, tlt)]
         return (ListT hdt, hdcs <> concat hdcss <> tlcs <> cs,
                  hdins <> concat hdinss <> tlins)
 
-patToExpr :: Pat -> Expr
-patToExpr (LitP l) = LitE l
-patToExpr (VarP v) = VarE v
-patToExpr WildP = VarE (mkVar "_")
-patToExpr (TupP ps) = TupE (patToExpr <$> ps)
-patToExpr (SumP (Left p)) = SumE (Left (patToExpr p))
-patToExpr (SumP (Right p)) = SumE (Right (patToExpr p))
-patToExpr (ListP NilP) = ListE []
-patToExpr (ListP (ConsP hds Nothing)) = ListE (patToExpr <$> hds)
-patToExpr (ListP (ConsP hds (Just _))) = ListE ((patToExpr <$> hds) <> [VarE (mkVar "...")])
+-- patToExpr :: Pat -> Expr
+-- patToExpr (LitP l) = LitE l
+-- patToExpr (VarP v) = VarE False v
+-- patToExpr WildP = VarE False (mkVar "_")
+-- patToExpr (TupP ps) = TupE (patToExpr <$> ps)
+-- patToExpr (SumP (Left p)) = SumE (Left (patToExpr p))
+-- patToExpr (SumP (Right p)) = SumE (Right (patToExpr p))
+-- patToExpr (ListP NilP) = ListE []
+-- patToExpr (ListP (ConsP hds Nothing)) = ListE (patToExpr <$> hds)
+-- patToExpr (ListP (ConsP hds (Just _))) = ListE ((patToExpr <$> hds)
+--                                                 <> [VarE False (mkVar "...")])
+
+----------------------------------------
+-- | Inferring do statements
+----------------------------------------
+
+inferDo :: [DoStmt] -> Infer (Type, [Constraint])
+inferDo [ExprStmt e] = do
+  tv <- freshTVar
+  (t, cs) <- inferExpr e
+  let cio = [(IOT tv, t)]
+  return (t, cs <> cio)
+inferDo (BindStmt v e : xs) = do
+  tv <- freshTVar
+  (te, cse) <- inferExpr e
+  (txs, csxs) <- inExtEnv (v, Forall [] tv) (inferDo xs)
+  let cio = [(IOT tv, te)]
+  return (txs, cse <> csxs <> cio)
+inferDo (ExprStmt e : xs) = do
+  tv <- freshTVar
+  (te, cse) <- inferExpr e
+  (txs, csxs) <- inferDo xs
+  let cio = [(IOT tv, te)]
+  return (txs, cse <> csxs <> cio)
+inferDo stmts = do
+  throwError (InternalTypeCheckingError ("inferDo: unexpected input " <> show stmts))
 
 ----------------------------------------
 -- | Helpers
@@ -309,3 +343,4 @@ normalize (Forall _ body) =
     normtype (a :+: b) = normtype a :+: normtype b
     normtype (TupT ts) = TupT (normtype <$> ts)
     normtype (ListT t) = ListT (normtype t)
+    normtype (IOT t)   = IOT (normtype t)

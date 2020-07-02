@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Syntax where
 
 import Data.List
@@ -7,14 +8,17 @@ import Data.Text.Lazy (Text, pack, unpack)
 -- | Variables
 ----------------------------------------
 
-newtype Var = Var { unVar :: Text }
+data Var = Var { varIO :: Bool, varName :: Text }
   deriving (Show, Eq, Ord)
 
-mkVar :: String -> Var
-mkVar = Var .  pack
+mkVar :: Text -> Var
+mkVar = Var False
+
+markAsIO :: Var -> Var
+markAsIO var = var { varIO = True }
 
 showVar :: Var -> String
-showVar = unpack . unVar
+showVar = unpack . varName
 
 ----------------------------------------
 -- | Top level declarations
@@ -34,13 +38,23 @@ data Bind =
   deriving (Show, Eq)
 
 -- | Split a bind
-getBind :: Bind -> (Var, Expr)
-getBind (ValB name expr)      = (name, expr)
-getBind (FunB name args expr) = (name, abstractAndFix name args expr)
+getBind :: Bind -> (Var, Expr, Expr -> Bind)
+getBind (ValB name expr)      = (name, expr, ValB name)
+getBind (FunB name args expr) = (name, funToFix name args expr, fixToFun name args)
+  where
+    funToFix nm as body =
+      FixE (LamE nm (foldr LamE body as))
 
--- | Abstract a function body with its arguments using lambdas
-abstractAndFix :: Var -> [Var] -> Expr -> Expr
-abstractAndFix name args body = FixE (LamE name (foldr LamE body args))
+    fixToFun nm as (FixE (LamE nm' body)) | nm == nm' =
+      FunB nm as (dropLams as body)
+    fixToFun _ _ _ = impossible
+
+    dropLams []     e                   = e
+    dropLams (x:xs) (LamE v e) | x == v = dropLams xs e
+    dropLams _      _                   = impossible
+
+    impossible = error "fixToFun: impossible case"
+
 
 ----------------------------------------
 -- | Expressions
@@ -59,6 +73,7 @@ data Expr =
   | TupE [Expr]
   | SumE (Either Expr Expr)
   | ListE [Expr]
+  | DoE [DoStmt]
   deriving (Show, Eq)
 
 ----------------------------------------
@@ -119,6 +134,15 @@ nonLinear pat =
   where pvs = patVars pat
 
 ----------------------------------------
+-- | Do statements
+----------------------------------------
+
+data DoStmt =
+    BindStmt Var Expr
+  | ExprStmt Expr
+  deriving (Show, Eq)
+
+----------------------------------------
 -- | Types
 ----------------------------------------
 
@@ -129,6 +153,7 @@ data Type =
   | Type :+: Type
   | TupT [Type]
   | ListT Type
+  | IOT Type
   deriving (Show, Eq, Ord)
 
 infix  :+:

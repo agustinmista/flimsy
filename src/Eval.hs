@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 module Eval where
@@ -59,11 +60,19 @@ lookupThunkOf var venv = do
     Just ref -> return ref
     Nothing -> throwError (InternalEvaluationError ("missing thunk for: " <> showVar var))
 
+-- force a pure thunk, updating it with the calculated value
 forceThunk :: IORef Thunk -> Eval Value
 forceThunk ref = do
   Thunk th <- liftIO $ readIORef ref
   v <- th ()
-  updateThunk ref (pureThunk v)
+  -- updateThunk ref (pureThunk v)
+  return v
+
+-- force a IO thunk, without updating its value!
+forceThunkIO :: IORef Thunk -> Eval Value
+forceThunkIO ref = do
+  Thunk th <- liftIO $ readIORef ref
+  v <- th ()
   return v
 
 updateThunk :: MonadIO m => IORef Thunk -> Thunk -> m ()
@@ -128,7 +137,7 @@ evalExpr env expr = do
       return (ClosureV (createThunkRunner env var body))
     -- LetE
     LetE bind body -> do
-      let (var, expr') = getBind bind
+      let (var, expr', _) = getBind bind
       evalExpr env (AppE (LamE var body) expr')
     -- LitE
     LitE l -> do
@@ -171,7 +180,8 @@ evalExpr env expr = do
     ListE es -> do
       vs <- mapM (evalExpr env) es
       return (ListV vs)
-
+    DoE stmts -> do
+      evalDo env stmts
 
 ----------------------------------------
 -- | Evaluating case expressions
@@ -228,3 +238,23 @@ matchListWithTail tl (p:ps) (v:vs) = do
   return (sub <> subs)
 matchListWithTail _ _ _ =
   Nothing
+
+----------------------------------------
+-- | Evaluating do expressions
+----------------------------------------
+
+evalDo :: EvalEnv -> [DoStmt] -> Eval Value
+evalDo env [ExprStmt e] = do
+  -- let th = mkThunk (evalExpr env e)
+  liftIO $ putStrLn $ "evaluating " <> show e
+  evalExpr env e
+  -- throwError (InternalEvaluationError "evalDo: not implemented")
+evalDo _env (BindStmt _v _e : _xs) = do
+  throwError (InternalEvaluationError "evalDo: not implemented")
+evalDo env (ExprStmt e : xs) = do
+  liftIO $ putStrLn $ "evaluating " <> show e
+  !_ <- evalExpr env e
+  evalDo env xs
+  -- throwError (InternalEvaluationError "evalDo: not implemented")
+evalDo _ stmts = do
+  throwError (InternalEvaluationError ("evalDo: unexpected input " <> show stmts))

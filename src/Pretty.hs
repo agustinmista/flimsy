@@ -126,7 +126,11 @@ instance Pretty Expr where
     text "[]"
   ppr _ (ListE xs) =
     lbrack <> cat (punctuate comma (pp <$> xs)) <> rbrack
-  -- | type annotations
+  ppr p (DoE stmts) =
+    parensIf (p > 0) $
+      text "do" <+> lbrace
+      <+> hsep (punctuate semi (pp <$> stmts))
+      <+> rbrace
 
 ----------------------------------------
 -- | Case alternatives
@@ -178,6 +182,16 @@ instance Pretty Literal where
   ppr _ (CharL c) = text (show c)
 
 ----------------------------------------
+-- | Do statements
+----------------------------------------
+
+instance Pretty DoStmt where
+  ppr _ (BindStmt v e) =
+    pp v <+> text "<-" <+> pp e
+  ppr _ (ExprStmt e) =
+    pp e
+
+----------------------------------------
 -- | Types
 ----------------------------------------
 
@@ -197,6 +211,10 @@ instance Pretty Type where
   ppr _ (ListT t) =
     brackets $
       pp t
+  ppr _ (IOT t) =
+    text "IO" <+> (pp' t)
+
+
 
 ----------------------------------------
 -- | Type schemes

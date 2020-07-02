@@ -7,6 +7,8 @@ module Parser
   , parseSourceFile
   ) where
 
+import Control.Monad
+
 import Data.Functor
 import Data.Text.Lazy (Text)
 
@@ -19,6 +21,7 @@ import Syntax
 ----------------------------------------
 -- | Parsing functions
 ----------------------------------------
+
 -- | Parse the interactive input, either expression or declaration
 parseStdin :: FilePath -> Text -> Either ParseError (Either Expr Decl)
 parseStdin = parse (contents stdin)
@@ -64,6 +67,13 @@ bindD :: Parser Decl
 bindD = BindD <$> bind
 
 ----------------------------------------
+-- | Variables
+----------------------------------------
+
+var :: Parser Var
+var = Var False <$> identifier
+
+----------------------------------------
 -- | Binds
 ----------------------------------------
 
@@ -78,31 +88,31 @@ bind =
 valB :: Parser Bind
 valB = do
   val_
-  v <- identifier
+  v <- var
   equal_
   e <- expr
-  return (ValB (Var v) e)
+  return (ValB v e)
 
 -- | Function binds with implicit fixpoints
 funB :: Parser Bind
 funB = do
   fun_
-  f <- identifier
-  args <- many1 identifier
+  f <- var
+  args <- many1 var
   equal_
   e <- expr
-  return (FunB (Var f) (Var <$> args) e)
+  return (FunB f args e)
 
 -- | Infix operators
 infixB :: Parser Bind
 infixB = do
   fun_
   f <- parens operator
-  arg1 <- identifier
-  arg2 <- identifier
+  arg1 <- var
+  arg2 <- var
   equal_
   e <- expr
-  return (FunB (Var f) (Var <$> [arg1, arg2]) e)
+  return (FunB (Var False f) [arg1, arg2] e)
 
 ----------------------------------------
 -- | Expressions
@@ -131,7 +141,7 @@ infixOp = do
   e1 <- appE
   op <- operator
   e2 <- appE
-  return (InfixE (Var op) e1 e2)
+  return (InfixE (Var False op) e1 e2)
 
 -- | Applied expressions without type annotations
 appE :: Parser Expr
@@ -140,7 +150,8 @@ appE = chainl1 atomE (optional whiteSpace $> AppE)
 -- | Atomic expressions
 atomE :: Parser Expr
 atomE =
-  varE
+  try doE
+  <|> varE
   <|> litE
   <|> try (parens expr)
   <|> tupE
@@ -153,16 +164,16 @@ litE = LitE <$> literal
 
 -- | Variables
 varE :: Parser Expr
-varE = VarE . Var <$> identifier
+varE = VarE <$> var
 
 -- | Lambda abstractions
 lamE :: Parser Expr
 lamE = do
   fn_
-  vs <- many1 identifier
+  vs <- many1 var
   darrow_
   e <- expr
-  return (foldr LamE e (Var <$> vs))
+  return (foldr LamE e vs)
 
 -- | Tuple expressions
 -- | Note: unit expression is represented as (TupT [])
@@ -213,6 +224,38 @@ ifE = do
   else_
   el <- expr
   return (IfE c th el)
+
+-- | Do expressions
+doE :: Parser Expr
+doE = do
+  do_
+  stmts <- braces (doS `sepBy1` semi_)
+  let l = last stmts
+  let isBindStmt (BindStmt {}) = True
+      isBindStmt _             = False
+  when (isBindStmt l) $
+    unexpected "bind statement"
+  return (DoE stmts)
+
+----------------------------------------
+-- | Do statements
+----------------------------------------
+
+doS :: Parser DoStmt
+doS =
+  try bindS
+  <|> exprS
+  <?> "do statement"
+
+bindS :: Parser DoStmt
+bindS = do
+  v <- var
+  doarrow_
+  e <- expr
+  return (BindStmt v e)
+
+exprS :: Parser DoStmt
+exprS = ExprStmt <$> expr
 
 ----------------------------------------
 -- | Literals
@@ -269,7 +312,7 @@ litP = LitP <$> literal
 
 -- | Variables
 varP :: Parser Pat
-varP = VarP . Var <$> identifier
+varP = VarP <$> var
 
 -- | Tuples
 -- | Note: unit expression is represented as (TupT [])
@@ -338,6 +381,7 @@ sumT = do
 nonSumT :: Parser Type
 nonSumT =
   varT
+  <|> try ioT
   <|> conT
   <|> try (parens type')
   <|> tupT
@@ -350,13 +394,20 @@ varT = VarT . TVar <$> identifier
 
 -- | Type constructors
 conT :: Parser Type
-conT = ConT . Var <$> identifierT
+conT = ConT <$> var
 
 -- | Product types
--- | Note: Unit type is represented as (TupT [])
+-- | Note: () is represented as (TupT [])
 tupT :: Parser Type
 tupT = TupT <$> parens (type' `sepBy` comma_)
 
 -- | List type
 listT :: Parser Type
 listT = ListT <$> brackets type'
+
+-- | IO type
+ioT :: Parser Type
+ioT = do
+  io_
+  t <- type'
+  return (IOT t)

@@ -1,100 +1,100 @@
-:! vim lib/prelude.jm 
-:! vim lib/prelude.jm 
-:! ls
-:! ghci
+:t gl
+val gl = getline
+:t getline
+:t getline
+:e getline
+do { getline; getline  } 
+do { getline; getline  } 
+main
+do { putline "x"; putline "y"  } 
+do { getline; getline  } 
+10
+do { getline; getline  } 
+do { getline; getline  } 
+do { getline; getline  } 
+do { getline; getline  } 
+putline "foo"
+getline 
+getline
+pi
+main
+putline "10" 
+putline
+getline 
+return 10
+:t return
+getline 
+getline 
+:t getline 
+:t main
+:t putline "hi"
+putline "hi"
+putline
+getline
+:t return 10
+return 10
+:t return
+:info
+getline 
+:info
+putline 
+getline 
+return 10
+:t return 
+:t if 5 then 10 else 20 10
+:echo if 5 then 10 else 20 10
+:echo if 5 then 10 else 20
+:t if 5 then 10 else 20
+:t if 5 then 10 else 20
+:t do { putline "foo"; putline "foo" }
+:t do { x <- putline "foo"; putline "foo" }
+:t do { x <- putline "foo"; putline x }
+:t do { x <- putline "foo"; putline "bar"   }
+:t do { putline "foo"  }
+:t do { putline "foo"  }
+:t do { putline  }
+:t do { getline }
+:t getline 
+:t putline 
+:t putline 
+:t getline 
+:t do { getline; getline }
+:t do { getline; getline }
+:t do { getline; getline }
+:t do { getline }
+:t getline 
+do { 10 }
+do { 10 }
+do { 10 }
+do { 10  }
+do {}
+:echo do { foo; x <- bar }
+:echo do { foo; bar }
+:echo do { foo; bar }
+:echo do { foo; bar }
+:echo do { foo; bar }
+:echo do { foo; bar }
+:echo 10 + 20
+:echo 10
+:reload 
+:l lib/test.jm 
+:l lib/deps.jm
+:l lib/deps.jm lib/test.jm 
+:reload 
+baz 10 20
+:browse lib/test.jm 
+:e lib/test.jm 
+:e lib/test.jm 
+:browse lib/test.jm 
+:e lib/test.jm 
+:l lib/test.jm 
+:e lib/test.jm 
+:info 
 :load 
-:load 
-:load 
-:l
-fun f x = 1 + false
-fun f 2 = 10
-fun f x = 10
-fun f x = 10
-fun f x = 10
-val f x = 10
-:t f
-f
-val f = 10
-val true = 10
-fact 10
-:browse lib/prelude.jm 
-:browse lib/deps.jm
-:browse lib/deps.jm 
-:browse 
-:l lib/deps.jm 
-:browse 
-:browse 
-:l lib/deps.jm 
-:browse 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-:l lib/deps.jm 
-qux 
-:l lib/deps.jm 
-fact 5
-:t fact
-:info fst
-val id = (fn x => x) : Int -> a
-val id = fn x => x : Int -> a
-:t id
-val id = fn x => x
-sig id : Int -> a
-:t id'
-id'
-val id' = fn x => x
-:t id
-val id = fn x => x
-sig id : Int -> Int
-:t (fn x => x) : Int -> Int
-(fn x => x) : Int -> Int
-fn x => x
-id false
-id False
-:t id
-sig id : Int -> Int
-:t id
-fun id x = x
-sig id : Int -> Int
-:info id
-:t id
-sig id : Int -> Int
-:t id
-fun id x = x
-fn
-asdadsdad
-1 + false
-1 + false
-1 + false
-1 + false
-:info fact
-:t take 4 [1,2,3,4,5]
-take 4 [1,2,3,4,5]
-:info x y
-val y = 20
-:info x
-val x = 10
-:info x
-val x = 10
-x = 10
-x
-:info x
-x
-val x = 5
-x
-val x = fn y => y
-x
-x
+:reload <interactive>
+:reload 
+:info 
+prim_eq__ (10,false)
+prim_eq__ (10,10)
+prim_eq__ (10,20)
+:info 

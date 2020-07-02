@@ -21,6 +21,7 @@ langDef = LanguageDef
       , "case", "of", "end"
       , "fn", "λ", "fix", "left", "right"
       , "true", "false"
+      , "do", "IO"
       ]
   , identStart = lower
   , identLetter = alphaNum <|> oneOf "_'"
@@ -67,6 +68,7 @@ symbol     = Token.symbol lexer
 pipe_    = void (Token.symbol lexer "|")
 darrow_  = void (Token.symbol lexer "=>")
 arrow_   = void (Token.symbol lexer "->")
+doarrow_ = void (Token.symbol lexer "<-")
 equal_   = void (Token.symbol lexer "=")
 wild_    = void (Token.symbol lexer "_")
 plus_    = void (Token.symbol lexer "+")
@@ -100,3 +102,5 @@ false_   = Token.reserved lexer "false"
 left_    = Token.reserved lexer "left"
 right_   = Token.reserved lexer "right"
 fn_      = Token.reserved lexer "fn"
+do_      = Token.reserved lexer "do"
+io_      = Token.reserved lexer "IO"

@@ -1,0 +1,6 @@
+val main = do 
+  { x <- getline
+  ; y <- getline
+  ; putline y
+  ; putline x
+  }

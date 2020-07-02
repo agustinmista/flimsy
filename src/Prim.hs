@@ -26,21 +26,24 @@ boot = "<boot>"
 
 environment :: PrimEnv
 environment = Env.fromList
-  [ prim "prim_int_add__" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (x+y))
-  , prim "prim_int_sub__" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (x-y))
-  , prim "prim_int_mul__" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (x*y))
-  , prim "prim_int_div__" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (div x y))
-  , prim "prim_eq__"      "(a,a) -> Bool"    $ \(x :*: y)         -> pure (Bool (x==y))
+  [ prim "floppy_prim_int_add" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (x+y))
+  , prim "floppy_prim_int_sub" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (x-y))
+  , prim "floppy_prim_int_mul" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (x*y))
+  , prim "floppy_prim_int_div" "(Int,Int) -> Int" $ \(Int x :*: Int y) -> pure (Int (div x y))
 
-  , prim "prim_getline__" "() -> String" getline
-  , prim "prim_putline__" "String -> ()" putline
+  , prim "floppy_prim_eq"      "(a,a) -> Bool"    $ \(x :*: y)         -> pure (Bool (x==y))
 
-  , prim "prim_list_cons__" "(a, [a]) -> [a]" cons
+  , prim "floppy_prim_io_getline" "() -> IO String" getline
+  , prim "floppy_prim_io_putline" "String -> IO ()" putline
+  , prim "floppy_prim_io_return"  "a -> IO a"       return
+
+  , prim "floppy_prim_list_cons" "(a, [a]) -> [a]" cons
 
   ]
 
 getline :: Value -> Eval Value
-getline _ = String <$> liftIO Text.getLine
+getline (TupV []) = String <$> liftIO Text.getLine
+getline _ = throwError (MarshallingError "getline")
 
 putline :: Value -> Eval Value
 putline (String s) = unit <$> liftIO (Text.putStrLn s)
@@ -55,7 +58,7 @@ cons _ = throwError (MarshallingError "cons")
 ----------------------------------------
 
 prim :: Text -> Text -> (Value -> Eval Value) -> (Var, Prim)
-prim name tystr body = (Var name, Prim (closeOver ty) (PrimRunner body))
+prim name tystr body = (Var False name, Prim (closeOver ty) (PrimRunner body))
   where Right ty = parseType boot tystr
 
 unit :: () -> Value

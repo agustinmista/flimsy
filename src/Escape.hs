@@ -22,7 +22,8 @@ tryTopSort env decls = foldSCCs sccs
   where
     envVars = Set.fromList (Env.keys env)
     sccs = stronglyConnComp (node envVars <$> decls)
-    declVar (BindD bind) = fst (getBind bind)
+    declVar (BindD bind) = let (v,_,_) = getBind bind in v
+
 
     foldSCCs [] =
       Right []
@@ -35,7 +36,7 @@ tryTopSort env decls = foldSCCs sccs
 node :: Set Var -> Decl -> (Decl, Var, [Var])
 node vs (BindD bind) = (BindD bind, var, Set.toList escaped)
   where
-    (var, expr) = getBind bind
+    (var, expr, _) = getBind bind
     escaped = escapedVars vs expr
 
 ----------------------------------------
@@ -66,7 +67,7 @@ escapedExpr expr = do
       local (Set.insert x) (escapedExpr e)
     -- LetE
     LetE b e2 -> do
-      let (var, e1) = getBind b
+      let (var, e1, _) = getBind b
       ese1 <- escapedExpr e1
       ese2 <- local (Set.insert var) (escapedExpr e2)
       return (ese1 <> ese2)
@@ -106,8 +107,22 @@ escapedExpr expr = do
     ListE xs -> do
       esxs <- mapM escapedExpr xs
       return (Set.unions esxs)
+    -- DoE
+    DoE stmts -> do
+      escapedDo stmts
 
 escapedAlt :: Alt -> Scope (Set Var)
 escapedAlt (Alt pat body) = local (Set.fromList pv <>) (escapedExpr body)
   where
     pv = patVars pat
+
+escapedDo :: [DoStmt] -> Scope (Set Var)
+escapedDo [] = return Set.empty
+escapedDo (BindStmt v e : xs) = do
+  ese <- escapedExpr e
+  esxs <- local (Set.insert v) (escapedDo xs)
+  return (ese <> esxs)
+escapedDo (ExprStmt e : xs) = do
+  ese <- escapedExpr e
+  esxs <- escapedDo xs
+  return (ese <> esxs)

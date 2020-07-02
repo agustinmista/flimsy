@@ -38,6 +38,7 @@ unify (t1 :->: t2) (t3 :->: t4) = unifyMany [t1, t2] [t3, t4]
 unify (t1 :+: t2) (t3 :+: t4) = unifyMany [t1, t2] [t3, t4]
 unify (TupT ts1) (TupT ts2) = unifyMany ts1 ts2
 unify (ListT t1) (ListT t2) = unify t1 t2
+unify (IOT t1) (IOT t2) = unify t1 t2
 unify t1 t2 = throwError (UnificationFail t1 t2)
 
 unifyMany :: [Type] -> [Type] -> Solve Subst

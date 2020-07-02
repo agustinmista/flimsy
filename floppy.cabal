@@ -1,5 +1,5 @@
 cabal-version: >=1.10
-name: jemaine
+name: floppy
 version: 0.1.0.0
 -- synopsis:
 -- description:
@@ -12,7 +12,7 @@ maintainer: mista@chalmers.se
 -- category:
 build-type: Simple
 
-executable jemaine
+executable floppy
   main-is:
     Main.hs
   hs-source-dirs:
@@ -46,6 +46,7 @@ executable jemaine
     parsec,
     pretty,
     repline == 0.3.0.0,
+    exceptions,
     filepath,
     process,
     llvm-hs,
