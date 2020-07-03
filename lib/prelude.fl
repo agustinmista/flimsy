@@ -3,28 +3,24 @@ val pi = 3.14
 fun fst tup = case tup of (x,_) => x
 fun snd tup = case tup of (_,y) => y
 
-fun (+) x y = floppy_prim_int_add (x,y)
-fun (-) x y = floppy_prim_int_sub (x,y)
-fun (*) x y = floppy_prim_int_mul (x,y)
-fun (/) x y = floppy_prim_int_div (x,y)
+fun (+) x y = flimsy_prim_int_add (x,y)
+fun (-) x y = flimsy_prim_int_sub (x,y)
+fun (*) x y = flimsy_prim_int_mul (x,y)
+fun (/) x y = flimsy_prim_int_div (x,y)
 
-fun (==) x y = floppy_prim_eq (x,y)
+val getline = flimsy_prim_io_getline ()
+fun putline x = flimsy_prim_io_putline x
+fun return  x = flimsy_prim_io_return x
 
-val getline = floppy_prim_io_getline ()
-fun putline x = floppy_prim_io_putline x
-fun return  x = floppy_prim_io_return x
+fun show x = flimsy_prim_show x
+fun print x = putline (show x)
 
-fun (::) x xs = floppy_prim_list_cons (x,xs)
+fun (:>) x xs = flimsy_prim_list_cons (x,xs)
 
 fun fact n =
   case n of
   | 0 => 1
   | n => n * fact (n - 1)
-
-fun fact' n =
-  if n == 0
-  then 1
-  else n * fact (n - 1)
 
 val bottom = fix (fn x => x)
 
@@ -32,7 +28,7 @@ fun take n l =
   case (n, l) of
   | (0, _)      => []
   | (_, [])     => []
-  | (n, [x|xs]) => x :: take (n - 1) xs
+  | (n, [x|xs]) => x :> take (n - 1) xs
 
 val main = do
   { x <- putline "foo"

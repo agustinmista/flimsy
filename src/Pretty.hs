@@ -224,8 +224,6 @@ instance Pretty Type where
     parensIf (p > 0) $
       text "IO" <+> (pp' t)
 
-
-
 ----------------------------------------
 -- | Type schemes
 ----------------------------------------
@@ -317,9 +315,16 @@ instance Pretty Value where
   ppr p (SumV (Right r)) =
     parensIf (p > 0) $
       text "right" <+> pp' r
-  ppr _ (ListV vs) =
-    brackets $
-      cat (punctuate comma (pp <$> vs))
+  ppr _ NilV =
+    text "[]"
+  ppr _ (ConsV hd tl) =
+    lbrack
+    <> pp hd <> ppTail tl
+    <> rbrack
+    where
+      ppTail NilV = empty
+      ppTail (ConsV h t) = text "," <> pp h <> ppTail t
+      ppTail v = text "|" <> pp v
   ppr _ (IOV {}) =
     text "<<IO>>"
   ppr _ (ClosureV {}) =

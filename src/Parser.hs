@@ -18,7 +18,7 @@ import Text.Parsec.Text.Lazy
 import Lexer
 import Var
 import Syntax
-import Type
+import Type hiding (ioT)
 
 ----------------------------------------
 -- | Parsing functions

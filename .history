@@ -1,3 +1,89 @@
+:thunk ones
+take 10 ones
+:thunk ones
+val ones = 1 :> ones
+case 4 of 3 => 3
+10
+10
+print 10
+:e lib/prelude.fl 
+:e lib/prelude.fl 
+(left [1,2,3], false)
+show (left [1,2,3], false)
+show (left [1,2,3], false)
+show (left [1,2,3])
+show (left 10)
+show (take 2 [1,2,3,x])
+show (take 2 [1,2,3,x])
+show (take 2 [1,2,3,x])
+show [1,2,3,x]
+[1,2,3,x]
+val x = x
+show [1,2,3]
+show [1,2,3]
+show (1,2,x)
+val x = x
+show [1,2,3]
+show (10, 20)
+show (10, 20)
+show (10, 20)
+:t show (10, 20)
+:t show 10
+show 10
+:t show
+:t show
+show true
+:e lib/prelude.fl 
+ones
+val ones = 1 :> ones
+ones
+take 5 ones
+val ones = 1 :> ones
+take 5 ones
+ones
+val ones = 1 :> ones
+take 2 [1,2,3,bad,5]
+val bad = bad
+x
+val x = x
+take 2 [1,2,3,4,5]
+:thunk bad
+val bad = [1,2,3,4,5,6, bottom]
+:thunk bad
+take 2 bad
+take 2 bad
+val bad = [1,2,3,4,5,6, bottom]
+take 2 bad
+val bad = [1,2,3,4,5,6, bottom]
+bad
+val bad = [1,2,3,4,5,6, bottom]
+take 2 bad
+val bad = [1,2,3,4,5,6, bottom]
+take 2 [1,2,3,4,5,6, bottom]
+:e lib/prelude.fl 
+:browse lib/prelude.fl 
+:e lib/prelude.fl 
+:browse lib/prelude.fl 
+take 2 [1,2,3,4,5,6, bottom]
+bottom 
+bot
+take 2 [1,3, let val f = f in f end]
+let val f = f in f end
+let val f = f in f
+let f = f in f
+take 2 [1,3,4]
+take 2 [1,3,4]
+take 2 [1,3,4]
+take 2 [1,3,4]
+take 2 [1,3,4]
+take 2 [1,3,4]
+take 2 [1,3,4]
+take 2 [1,3,4]
+take 2 [1,3,4]
+take 2 [1,3,4]
+[1,3,4]
+(10,20)
+10 + 20
 case ones of | [x,y|xs] => [x,y]
 case (1,ones) of | (x, y) => 5
 val ones = 1 :: ones
@@ -12,89 +98,3 @@ case (1,bad) of | (x, y) => x
 val bad = bad
 case (1,bad) of | (x, y) => x
 case (1,bad) of | (x, y) => x
-bad
-val bad = bad
-bad
-val bad = fn x => x
-case (1,ones) of | (x, y) => x
-case (1,ones) of | (x, y) = x
-val ones = 1 :: ones
-case (1,2) of | (x, 10) => (x, 10)
-case (1,2) of | (x, 10) => (y, 10)
-case (1,2) of | (x, 10) => (y, x)
-case (1,2) of | (x, y) => (y, x)
-(1,2)
-(1,2)
-(1,2)
-case (1, ones) of | x => 4
-case ones of | x => 4
-:t ones
-val ones = 1 :: ones
-ones
-fst (1, f)
-f
-:t f
-f 1
-:t f
-fun f x = f x
-putline "123"
-:t let val x = y; val y = 3; in x + y end
-1 :: 2 :: []
-1 :: 2 :: []
-:echo case 5 of y => y | _ => getline
-:echo case 5 of y => y | _ => 4
-:t case 5 of y => y | _ => 4
-:t case 5 of y => y | _ => x
-:t (fn x => case x of y => y | _ => x) getline
-:t (fn x => case x of y => y) getline
-:echo fun f io = do { x <- io; putline x }
-:echo fun f io = do { x <- io; putline x }
-:t f
-:t fun f io = do { x <- io; putline x }
-fun f io = do { x <- io; putline x }
-:t let val x = 2; val y = 3; in x + y end
-let val x = 2; val y = 3; in x + y end
-let val x = 2; val y = 3; in x + y
-take 10 ones
-:t ones
-:t val ones = 1 :: ones
-val ones = 1 :: ones
-val ones = 1 :: ones
-:t (fn x => case x of y => y) getline
-:t (fn x => case x of y => y) getline
-:t (fn x => case x of y => y) getline
-:t (fn x => case x of y => y) getline
-:t (fn x => case x of y => y) getline
-:t (fn x => case x of y => y) getline
-:t (fn x => case x of y => y) getline
-:t (fn x => case x of y => y) getline
-:t (fn x => x) getline
-do {getline} + do {getline}
-do {bar} + do {getline}
-1 + do {getline}
-1 + do {getline} 2
-1 + do {getline} 2
-1 + do {getline}
-1 + 2 +3
-1 + 2
-:t do { x <- return (putline "x"); x } 
-:t do { x <- putline "x"; return x } 
-:t do { x <- putline "x"; return x } 
-:t do { x <- putline "x"; x } 
-:t return getline
-:t getline 
-:t do { get <- return getline; x <- get; put <- return putline; put x; putline x }
-do { get <- return getline; x <- get; put <- return putline; put x; putline x }
-:t getline 
-:t take 4 [1,2,3,4,5,6]
-:t getline 
-:t take 4 [1,2,3,4,5,6]
-take 4 [1,2,3,4,5,6] : t
-take 4 [1,2,3,4,5,6]
-take 4 [1,2,3,4,5,6]
-fact 10
-do { get <- return getline; x <- get; put <- return putline; put x; putline x }
-return 10
-snd (return 10)
-snd (return 10)
-return 10

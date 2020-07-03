@@ -23,6 +23,9 @@ infix  :+:
 infixr :->:
 
 -- | Primitive types
+unitT :: Type
+unitT = TupT []
+
 intT :: Type
 intT = ConT (mkVar "Int")
 
@@ -38,8 +41,8 @@ boolT = ConT (mkVar "Bool")
 charT :: Type
 charT = ConT (mkVar "Char")
 
-isPrimType :: Type -> Bool
-isPrimType c = c `elem` [intT, doubleT, stringT, boolT, charT]
+ioT :: Type -> Type
+ioT = IOT
 
 isIOType :: Type -> Bool
 isIOType (IOT _) = True

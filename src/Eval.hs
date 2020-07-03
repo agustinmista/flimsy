@@ -26,7 +26,8 @@ data Value =
   | ConV Var
   | TupV [Value]
   | SumV (Either Value Value)
-  | ListV [Value]
+  | NilV
+  | ConsV Value Value
   | IOV (IO Value)
   | ClosureV (Thunk -> Eval Value)
   | DeferredV Thunk
@@ -43,22 +44,25 @@ instance Show (IO Value) where
   show _ = "<<io value>>"
 
 instance Eq Value where
-  LitV v1  == LitV v2  = v1 == v2
-  ConV c1  == ConV c2  = c1 == c2
-  TupV vs1 == TupV vs2 = and (zipWith (==) vs1 vs2)
-  SumV v1  == SumV v2  = v1 == v2
-  _        == _        = False
+  LitV v1       == LitV v2        = v1 == v2
+  ConV c1       == ConV c2        = c1 == c2
+  TupV vs1      == TupV vs2       = and (zipWith (==) vs1 vs2)
+  SumV v1       == SumV v2        = v1 == v2
+  NilV          == NilV           = True
+  ConsV hd1 tl1 == ConsV hd2 tl2  = hd1 == hd2 && tl1 == tl2
+  _             == _              = False
 
-lazyValue :: Eval Value -> Value
-lazyValue = DeferredV . mkThunk
+deferredValue :: Eval Value -> Value
+deferredValue = DeferredV . mkThunk
 
 forceValue :: Value -> Eval Value
 forceValue (DeferredV (Thunk th)) = th () >>= forceValue
-forceValue (TupV vs) = TupV <$> sequence (fmap forceValue vs)
+forceValue (TupV vs) = TupV <$> sequence (forceValue <$> vs)
 forceValue (SumV (Left v)) = SumV . Left <$> forceValue v
 forceValue (SumV (Right v)) = SumV . Right <$> forceValue v
-forceValue (ListV vs) = ListV <$> sequence (fmap forceValue vs)
+forceValue (ConsV hd tl) = ConsV <$> forceValue hd <*> forceValue tl
 forceValue v = return v
+-- what about closures and IO?
 
 ----------------------------------------
 -- | Thunks
@@ -95,11 +99,6 @@ forceThunkIO :: IORef Thunk -> Eval Value
 forceThunkIO ref = do
   Thunk th <- liftIO $ readIORef ref
   th ()
-
-deferredExpr :: EvalEnv -> Var -> TcExpr -> (Thunk -> Eval Value)
-deferredExpr env var body = \th -> do
-  ref <- liftIO $ newIORef th
-  evalExpr (env `Env.extend` (var, ref)) body
 
 ----------------------------------------
 -- | Primitive operations
@@ -161,7 +160,7 @@ evalExpr env expr = do
           evalThunk (mkThunk (evalExpr env arg))
     -- LamE
     LamE (var, _) body -> do
-      return (ClosureV (deferredExpr env var body))
+      return (deferredClosure env var body)
     -- LetE
     LetE bind body -> do
       let (_, var, expr') = splitBind bind
@@ -181,7 +180,7 @@ evalExpr env expr = do
     -- CaseE
     CaseE e alts -> do
       ve <- evalExpr env e
-      matched <- matchAlts ve alts
+      matched <- matchAlts alts ve
       case matched of
         Nothing -> throwError (NonExhaustiveCase expr)
         Just (alt, sub) -> do
@@ -195,88 +194,98 @@ evalExpr env expr = do
       evalExpr env (AppE e (FixE e))
     -- TupE
     TupE es -> do
-      let vs = lazyValue . evalExpr env <$> es
-      -- vs <- mapM (evalExpr env) es
+      let vs = deferredExpr env <$> es
       return (TupV vs)
     -- SumE
     SumE (Left e) -> do
-      v <- evalExpr env e
+      let v = deferredExpr env e
       return (SumV (Left v))
     SumE (Right e) -> do
-      v <- evalExpr env e
+      let v = deferredExpr env e
       return (SumV (Right v))
-    -- LitE
-    ListE es -> do
-      let vs = lazyValue . evalExpr env <$> es
-      -- vs <- mapM (evalExpr env) es
-      return (ListV vs)
+    -- ListE
+    ListE [] -> do
+      return NilV
+    ListE (e:es) -> do
+      let hd = deferredExpr env e
+      let tl = deferredExpr env (ListE es)
+      return (ConsV hd tl)
     DoE stmts -> do
       evalDo env stmts
+
+deferredExpr :: EvalEnv -> TcExpr -> Value
+deferredExpr env = deferredValue . evalExpr env
+
+deferredClosure :: EvalEnv -> Var -> TcExpr -> Value
+deferredClosure env var body = ClosureV $ \th -> do
+  ref <- liftIO $ newIORef th
+  evalExpr (env `Env.extend` (var, ref)) body
 
 ----------------------------------------
 -- | Evaluating case expressions
 ----------------------------------------
 
-matchAlts :: Value -> [TcAlt] -> Eval (Maybe (TcAlt, [(Var, Value)]))
-matchAlts _ [] = return Nothing
-matchAlts v (alt:alts) = do
-  matched <- match (getAltPat alt) v
+-- debugMatch :: TcPat -> Value -> Eval ()
+-- debugMatch p v = do
+--   liftIO $ putStrLn $ "=============="
+--   liftIO $ putStrLn $ "matching: "
+--   liftIO $ putStrLn $ show p
+--   liftIO $ putStrLn $ "with"
+--   liftIO $ putStrLn $ show v
+--   liftIO $ putStrLn $ "--------------"
+
+matchAlts :: [TcAlt] -> Value -> Eval (Maybe (TcAlt, [(Var, Value)]))
+matchAlts [] _ = return Nothing
+matchAlts (alt:alts) v = do
+  (matched, v') <- match (getAltPat alt) v
   case matched of
-    Just sub -> return (Just (alt, sub))
-    Nothing  -> matchAlts v alts
+    Just sub -> do
+      return (Just (alt, sub))
+    Nothing  -> do
+      matchAlts alts v'
 
-match :: TcPat -> Value -> Eval (Maybe [(Var, Value)])
-match (LitP lp) (LitV lv) | lp == lv =
-  return (Just [])
-match (VarP (var, _)) val =
-  return (Just [(var, val)])
-match WildP _ =
-  return (Just [])
-match (TupP ps) (TupV vs) =
+match :: TcPat -> Value -> Eval (Maybe [(Var, Value)], Value)
+match WildP v = do
+  return (Just [], v)
+match (VarP (var, _)) val = do
+  return (Just [(var, val)], val)
+match p (DeferredV (Thunk th)) = do
+  v <- th ()
+  match p v
+match (LitP lp) (LitV lv) | lp == lv = do
+  return (Just [], LitV lv)
+match (TupP ps) (TupV vs) = do
   matchTuple ps vs
-match (SumP (Left p)) (SumV (Left v)) =
+match (SumP (Left p)) (SumV (Left v)) = do
   match p v
-match (SumP (Right p)) (SumV (Right v)) =
+match (SumP (Right p)) (SumV (Right v)) = do
   match p v
-match (ListP NilP) (ListV []) =
-  return (Just [])
-match (ListP (ConsP hds Nothing)) (ListV vs) =
-  matchList hds vs
-match (ListP (ConsP hds (Just tl))) (ListV vs) =
-  matchListWithTail tl hds vs
-match _ _ =
-  return Nothing
+match (ListP p) v = do
+  matchList p v
+match _ v = do
+  return (Nothing, v)
 
-matchTuple :: [TcPat] -> [Value] -> Eval (Maybe [(Var, Value)])
-matchTuple [] [] =
-  return (Just [])
-matchTuple ps vs = do
-  fmap (fmap concat . sequence) (sequence (zipWith match ps vs))
-matchList :: [TcPat] -> [Value] -> Eval (Maybe [(Var, Value)])
-matchList [] [] =
-  return (Just [])
-matchList (p:ps) (v:vs) = do
-  matched <- do
-    sub <- match p v
-    subs <- matchList ps vs
-    return (sub <> subs)
-  return matched
-matchList _ _ =
-  return Nothing
+matchList :: TcListP -> Value -> Eval (Maybe [(Var, Value)], Value)
+matchList NilP NilV = do
+  return (Just [], NilV)
+matchList (ConsP [] (Just p)) v = do
+  match p v
+matchList (ConsP (hp:hps) tlp) (ConsV hv tlv) = do
+  (sub, hv') <- match hp hv
+  (subs, tlv') <- matchList (ConsP hps tlp) tlv
+  return (concat <$> sequence [sub, subs], ConsV hv' tlv')
+matchList _ v = do
+  return (Nothing, v)
 
-matchListWithTail :: TcPat -> [TcPat] -> [Value] -> Eval (Maybe [(Var, Value)])
-matchListWithTail WildP [] _ =
-  return (Just [])
-matchListWithTail (VarP (v, _)) [] vs =
-  return (Just [(v, ListV vs)])
-matchListWithTail tl (p:ps) (v:vs) = do
-  matched <- do
-    sub <- match p v
-    subs <- matchListWithTail tl ps vs
-    return (sub <> subs)
-  return matched
-matchListWithTail _ _ _ =
-  return Nothing
+matchTuple :: [TcPat] -> [Value] -> Eval (Maybe [(Var, Value)], Value)
+matchTuple [] [] = do
+  return (Just [], TupV [])
+matchTuple (p:ps) (v:vs) = do
+  (sub, v') <- match p v
+  (subs, TupV vs') <- matchTuple ps vs
+  return (concat <$> sequence [sub, subs], TupV (v':vs'))
+matchTuple _ _ = do
+  throwError (InternalEvalError "matchTuple: tuple size mismatch")
 
 ----------------------------------------
 -- | Evaluating do expressions
@@ -298,11 +307,3 @@ evalDo env (ExprStmt body : xs) = do
   evalDo env xs
 evalDo _ _ = do
   throwError (InternalEvalError "evalDo: unexpected input")
-
-----------------------------------------
--- | Evaluating expressions to WHNF
-----------------------------------------
-
--- evalExprWHNF :: EvalEnv -> Expr -> Eval Value
--- evalExprWHNF env expr = do
---   case Tup

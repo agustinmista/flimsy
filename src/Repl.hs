@@ -210,15 +210,12 @@ processExpr expr = do
   let wrapped = case (expr', ty) of
         (DoE _, Forall _ (IOT _)) -> expr'
         (_,     Forall _ (IOT _)) -> DoE [ExprStmt expr']
-        _                         -> expr'
+        _                         -> DoE [ExprStmt (AppE (VarE (mkVar "print", stringT :->: ioT unitT)) expr')]
   -- evaluate it
   venv <- getEvalEnv
-  res  <- liftIO $ evaluate' venv Prim.environment wrapped
-  val  <- hoistError res
-  -- print it, only if it's not ()
-  case val of
-    TupV [] -> return ()
-    _       -> say $ pretty val
+  res  <- liftIO $ evaluate venv Prim.environment wrapped
+  void (hoistError res)
+  return ()
 
 ----------------------------------------
 -- | Interactive evaluation
@@ -248,6 +245,7 @@ replCommands =
   , ("info"   , infoCmd)
   , ("edit"   , editCmd)
   , ("echo"   , echoCmd)
+  , ("thunk"  , thunkCmd)
   ]
 
 -- :load
@@ -332,7 +330,7 @@ printInfo args = do
   forM_ args $ \arg -> do
     case Env.lookup (mkVar (pack arg)) (binds env) of
       Nothing -> do
-        say $ "not in scope: " <> arg
+        say $ "Not in scope: " <> arg
       Just (ReplBind _ ty file) -> do
         say $ arg <> " : " <> pretty ty <> "  -- defined at " <> file
 
@@ -387,11 +385,25 @@ echoCmd args = continueAfterError $ do
       say $ pretty expr'
     Right (BindD bind) -> do
       let (isVal, var, expr) = splitBind bind
-          -- type check the body
+      -- type check the body
       tenv <- getTcEnv
       (tsc, expr') <- hoistError (typeCheck tenv expr)
       ty <- hoistError (instantiate' tsc)
       say $ pretty (mergeBind isVal (var,  ty) expr')
+
+-- :thunk
+thunkCmd :: [String] -> Repl ()
+thunkCmd args = continueAfterError $ do
+  env <- getEvalEnv
+  forM_ args $ \arg -> do
+    case Env.lookup (mkVar (pack arg)) env of
+      Just ref -> do
+        Thunk th <- liftIO $ readIORef ref
+        res <- liftIO $ runEval Prim.environment (th ())
+        val <- hoistError res
+        say $ pretty val
+      Nothing -> do
+        say $ "Could not find a thunk for " <> arg
 
 ----------------------------------------
 -- | Tab completion
@@ -435,5 +447,6 @@ printBanner = say $
   , "|  _| | | | | | | \\__ \\ |_| | "
   , "|_| |_|_|_| |_| |_|___/\\__, | "
   , "                       |___/  "
+  , ""
   , "Welcome! flimsy REPL version 0.1.0.0"
   ]
