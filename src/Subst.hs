@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 module Subst
   ( Subst
   , singleton
@@ -14,7 +16,7 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import Syntax
+import Type
 import Env (Env, elems)
 
 ----------------------------------------

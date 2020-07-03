@@ -1,13 +1,17 @@
 module Error where
 
+import Data.Text.Lazy (Text)
+
+import Var
 import Syntax
+import Type
 
 ----------------------------------------
 -- | Escape errors
 ----------------------------------------
 
 data EscapeError =
-    CyclicDeclarations [Var]
+  CyclicDeclarations [Var]
   deriving Show
 
 ----------------------------------------
@@ -15,13 +19,13 @@ data EscapeError =
 ----------------------------------------
 
 data TypeError =
-    InternalTypeCheckingError String
+    InternalTcError     Text
   | UnificationFail     Type Type
   | InfiniteType        TVar Type
   | UnboundVariable     Var
   | UnificationMismatch [Type] [Type]
-  | NonLinearPattern    Pat
-  | TypeError :@ Expr
+  | NonLinearPattern    PsPat
+  | TypeError :@ PsExpr
   deriving Show
 
 ----------------------------------------
@@ -29,7 +33,7 @@ data TypeError =
 ----------------------------------------
 
 data EvalError =
-    InternalEvaluationError String
-  | MarshallingError String
-  | NonExhaustiveCase Expr
+    InternalEvalError Text
+  | MarshallingError  Text
+  | NonExhaustiveCase TcExpr
   deriving Show

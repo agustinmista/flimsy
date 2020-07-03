@@ -8,8 +8,11 @@ module Pretty
 import Prelude hiding ((<>))
 import Text.Parsec (ParseError)
 import Text.PrettyPrint
+import Data.Text.Lazy (unpack)
 
+import Var
 import Syntax
+import Type
 import Eval
 import Error
 
@@ -19,7 +22,7 @@ import Error
 
 -- | Main pretty printing function
 pretty :: Pretty a => a -> String
-pretty = renderStyle (Style PageMode 80 2) . pp
+pretty = renderStyle (Style PageMode 100 1.5) . pp
 
 -- | Type class for pretty printable types with an explicit level
 class Pretty p where
@@ -34,13 +37,19 @@ class Pretty p where
 ----------------------------------------
 
 instance Pretty Var where
-  ppr _ v = text (showVar v)
+  ppr _ v = text (unpack (showVar v))
+
+instance Pretty (Var, Type) where
+  ppr _ (v, t)
+    | isIOType t = text "\x1b[4m" <> text (unpack (showVar v)) <> text "\x1b[0m"
+    | otherwise  = text (unpack (showVar v))
+
 
 ----------------------------------------
 -- | Top level declarations
 ----------------------------------------
 
-instance Pretty Decl where
+instance Pretty a => Pretty (Decl a) where
   ppr _ (BindD b) =
     pp b
 
@@ -48,7 +57,7 @@ instance Pretty Decl where
 -- | Binds
 ----------------------------------------
 
-instance Pretty Bind where
+instance Pretty a => Pretty (Bind a) where
 
   -- | val binds
   ppr _ (ValB v e) =
@@ -62,7 +71,7 @@ instance Pretty Bind where
 -- | Expressions
 ----------------------------------------
 
-instance Pretty Expr where
+instance Pretty a => Pretty (Expr a) where
   -- | variables
   ppr _ (VarE v) =
     pp v
@@ -136,14 +145,14 @@ instance Pretty Expr where
 -- | Case alternatives
 ----------------------------------------
 
-instance Pretty Alt where
+instance Pretty a => Pretty (Alt a) where
   ppr _ (Alt pat e) = pp pat <+> text "=>" <+> pp e
 
 ----------------------------------------
 -- | Patterns
 ----------------------------------------
 
-instance Pretty Pat where
+instance Pretty a => Pretty (Pat a) where
   ppr _ (LitP l) =
     pp l
   ppr _ (VarP v) =
@@ -160,7 +169,7 @@ instance Pretty Pat where
   ppr _ (ListP p) =
     pp p
 
-instance Pretty ListP where
+instance Pretty a => Pretty (ListP a) where
   ppr _ NilP = text "[]"
   ppr _ (ConsP ps Nothing) =
     brackets $
@@ -185,7 +194,7 @@ instance Pretty Literal where
 -- | Do statements
 ----------------------------------------
 
-instance Pretty DoStmt where
+instance Pretty a => Pretty (DoStmt a) where
   ppr _ (BindStmt v e) =
     pp v <+> text "<-" <+> pp e
   ppr _ (ExprStmt e) =
@@ -211,8 +220,9 @@ instance Pretty Type where
   ppr _ (ListT t) =
     brackets $
       pp t
-  ppr _ (IOT t) =
-    text "IO" <+> (pp' t)
+  ppr p (IOT t) =
+    parensIf (p > 0) $
+      text "IO" <+> (pp' t)
 
 
 
@@ -267,22 +277,22 @@ instance Pretty TypeError where
   ppr _ (NonLinearPattern pat) =
     text "type error!" <+> text "non linear pattern:"
     $+$ text "  " <+> pp pat
-  ppr _ (InternalTypeCheckingError msg) =
+  ppr _ (InternalTcError msg) =
     text "type error!"
-    $+$ text msg
+    $+$ text (unpack msg)
   ppr _ (err :@ expr) =
     pp err
     $+$ text "in the expression:"
     $+$ text "  " <+> pp expr
 
 instance Pretty EvalError where
-  ppr _ (InternalEvaluationError msg) =
+  ppr _ (InternalEvalError msg) =
     text "runtime error!"
-    $+$ text msg
+    $+$ text (unpack msg)
   ppr _ (MarshallingError ident) =
     text "runtime error!"
     $+$ text "bad marshalling of primitive:"
-    $+$ text ident
+    $+$ text (unpack ident)
   ppr _ (NonExhaustiveCase expr) =
     text "runtime error!"
     $+$ text "non-exhaustive patterns in case"
@@ -310,49 +320,53 @@ instance Pretty Value where
   ppr _ (ListV vs) =
     brackets $
       cat (punctuate comma (pp <$> vs))
+  ppr _ (IOV {}) =
+    text "<<IO>>"
   ppr _ (ClosureV {}) =
-    text "<<function>>"
+    text "<<closure>>"
+  ppr _ (DeferredV {}) =
+    text "<<thunk>>"
 
 ----------------------------------------
 -- | Auxiliary functions
 ----------------------------------------
 
 -- | Views for lambda terms
-viewLamVars :: Expr -> [Var]
+viewLamVars :: Expr a -> [a]
 viewLamVars (LamE v e) = v : viewLamVars e
 viewLamVars _          = []
 
-viewLamBody :: Expr -> Expr
+viewLamBody :: Expr a -> Expr a
 viewLamBody (LamE _ e) = viewLamBody e
 viewLamBody x          = x
 
 -- | Views for function applications
-viewApp :: Expr -> (Expr, [Expr])
+viewApp :: Expr a -> (Expr a, [Expr a])
 viewApp (AppE e1 e2) = go e1 [e2]
   where
     go (AppE a b) xs = go a (b : xs)
     go f xs          = (f, xs)
 viewApp _ = error "viewApp: not an AppE"
 
-viewArgs :: Expr -> [Expr]
+viewArgs :: Expr a -> [Expr a]
 viewArgs = snd . viewApp
 
-viewFun :: Expr -> Expr
+viewFun :: Expr a -> Expr a
 viewFun = fst . viewApp
 
 -- | Views for let expressions
-viewLet :: Expr -> ([Bind], Expr)
+viewLet :: Expr a -> ([Bind a], Expr a)
 viewLet (LetE b e) = (b : bs, body)
   where (bs, body) = viewLet e
 viewLet body = ([], body)
 
-viewLetBinds :: Expr -> [Bind]
+viewLetBinds :: Expr a -> [Bind a]
 viewLetBinds = fst . viewLet
 
-viewLetBody :: Expr -> Expr
+viewLetBody :: Expr a -> Expr a
 viewLetBody = snd . viewLet
 
 -- | Conditional parens combinator
-parensIf ::  Bool -> Doc -> Doc
+parensIf :: Bool -> Doc -> Doc
 parensIf True  = parens
 parensIf False = id

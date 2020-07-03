@@ -16,22 +16,24 @@ import Text.Parsec
 import Text.Parsec.Text.Lazy
 
 import Lexer
+import Var
 import Syntax
+import Type
 
 ----------------------------------------
 -- | Parsing functions
 ----------------------------------------
 
 -- | Parse the interactive input, either expression or declaration
-parseStdin :: FilePath -> Text -> Either ParseError (Either Expr Decl)
+parseStdin :: FilePath -> Text -> Either ParseError (Either PsExpr PsDecl)
 parseStdin = parse (contents stdin)
 
 -- | Parse all top level binds in a source file
-parseSourceFile :: FilePath -> Text -> Either ParseError [Decl]
+parseSourceFile :: FilePath -> Text -> Either ParseError [PsDecl]
 parseSourceFile = parse (contents (many decl))
 
 -- | Parse a single expression
-parseExpr :: FilePath -> Text -> Either ParseError Expr
+parseExpr :: FilePath -> Text -> Either ParseError PsExpr
 parseExpr = parse (contents expr)
 
 -- | Parse a type
@@ -39,31 +41,31 @@ parseType :: FilePath -> Text -> Either ParseError Type
 parseType = parse (contents type')
 
 -- | Parse a expression bind
-parseBind :: FilePath -> Text -> Either ParseError Bind
+parseBind :: FilePath -> Text -> Either ParseError PsBind
 parseBind = parse (contents bind)
 
 -- | Parse a top level declaration
-parseDecl :: FilePath -> Text -> Either ParseError Decl
+parseDecl :: FilePath -> Text -> Either ParseError PsDecl
 parseDecl = parse (contents decl)
 
 ----------------------------------------
 -- | Stdin (either expression or declaration)
 ----------------------------------------
 
-stdin :: Parser (Either Expr Decl)
+stdin :: Parser (Either PsExpr PsDecl)
 stdin = (Left <$> try expr) <|> (Right <$> try decl)
 
 ----------------------------------------
 -- | Top level declarations
 ----------------------------------------
 
-decl :: Parser Decl
+decl :: Parser PsDecl
 decl =
   bindD
   <?> "top-level declaration"
 
 -- | Top level bindings
-bindD :: Parser Decl
+bindD :: Parser PsDecl
 bindD = BindD <$> bind
 
 ----------------------------------------
@@ -71,13 +73,16 @@ bindD = BindD <$> bind
 ----------------------------------------
 
 var :: Parser Var
-var = Var False <$> identifier
+var = Var <$> identifier
+
+con :: Parser Var
+con = Var <$> identifierT
 
 ----------------------------------------
 -- | Binds
 ----------------------------------------
 
-bind :: Parser Bind
+bind :: Parser PsBind
 bind =
   valB
   <|> try infixB
@@ -85,7 +90,7 @@ bind =
   <?> "bind"
 
 -- | Value binds
-valB :: Parser Bind
+valB :: Parser PsBind
 valB = do
   val_
   v <- var
@@ -94,7 +99,7 @@ valB = do
   return (ValB v e)
 
 -- | Function binds with implicit fixpoints
-funB :: Parser Bind
+funB :: Parser PsBind
 funB = do
   fun_
   f <- var
@@ -104,7 +109,7 @@ funB = do
   return (FunB f args e)
 
 -- | Infix operators
-infixB :: Parser Bind
+infixB :: Parser PsBind
 infixB = do
   fun_
   f <- parens operator
@@ -112,13 +117,13 @@ infixB = do
   arg2 <- var
   equal_
   e <- expr
-  return (FunB (Var False f) [arg1, arg2] e)
+  return (FunB (mkVar f) [arg1, arg2] e)
 
 ----------------------------------------
 -- | Expressions
 ----------------------------------------
 
-expr :: Parser Expr
+expr :: Parser PsExpr
 expr =
   try infixE
   <|> try appE
@@ -128,30 +133,31 @@ expr =
   <|> lamE
   <|> fixE
   <|> sumE
+  <|> doE
   <?> "expression"
 
 -- | Infix operators
-infixE :: Parser Expr
+infixE :: Parser PsExpr
 infixE =
   infixOp
   <?> "infix operator"
 
-infixOp :: Parser Expr
+infixOp :: Parser PsExpr
 infixOp = do
-  e1 <- appE
+  e1 <- try doE <|> appE
   op <- operator
-  e2 <- appE
-  return (InfixE (Var False op) e1 e2)
+  -- e2 <- appE
+  e2 <- expr
+  return (InfixE (mkVar op) e1 e2)
 
 -- | Applied expressions without type annotations
-appE :: Parser Expr
+appE :: Parser PsExpr
 appE = chainl1 atomE (optional whiteSpace $> AppE)
 
 -- | Atomic expressions
-atomE :: Parser Expr
+atomE :: Parser PsExpr
 atomE =
-  try doE
-  <|> varE
+  varE
   <|> litE
   <|> try (parens expr)
   <|> tupE
@@ -159,15 +165,15 @@ atomE =
   <?> "atom"
 
 -- | Literals
-litE :: Parser Expr
+litE :: Parser PsExpr
 litE = LitE <$> literal
 
 -- | Variables
-varE :: Parser Expr
+varE :: Parser PsExpr
 varE = VarE <$> var
 
 -- | Lambda abstractions
-lamE :: Parser Expr
+lamE :: Parser PsExpr
 lamE = do
   fn_
   vs <- many1 var
@@ -177,25 +183,25 @@ lamE = do
 
 -- | Tuple expressions
 -- | Note: unit expression is represented as (TupT [])
-tupE :: Parser Expr
+tupE :: Parser PsExpr
 tupE = TupE <$> parens (expr `sepBy` comma_)
 
 -- | List expressions
-listE :: Parser Expr
+listE :: Parser PsExpr
 listE = do
   exps <- brackets (expr `sepBy` comma_)
   return (ListE exps)
 
 -- | Sum injections
-sumE :: Parser Expr
+sumE :: Parser PsExpr
 sumE = SumE <$> (left_ *> (Left <$> atomE) <|> right_ *> (Right <$> atomE))
 
 -- | Fixpoint expressions
-fixE :: Parser Expr
+fixE :: Parser PsExpr
 fixE = FixE <$> (fix_ *> atomE)
 
 -- | Let expressions
-letE :: Parser Expr
+letE :: Parser PsExpr
 letE = do
   let_
   binds <- many1 (bind <* optional semi_)
@@ -205,7 +211,7 @@ letE = do
   return (foldr LetE e binds)
 
 -- | Case expressions
-caseE :: Parser Expr
+caseE :: Parser PsExpr
 caseE = do
   case_
   e <- expr
@@ -215,7 +221,7 @@ caseE = do
   return (CaseE e alts)
 
 -- | If then else expressions
-ifE :: Parser Expr
+ifE :: Parser PsExpr
 ifE = do
   if_
   c <- expr
@@ -226,7 +232,7 @@ ifE = do
   return (IfE c th el)
 
 -- | Do expressions
-doE :: Parser Expr
+doE :: Parser PsExpr
 doE = do
   do_
   stmts <- braces (doS `sepBy1` semi_)
@@ -241,20 +247,20 @@ doE = do
 -- | Do statements
 ----------------------------------------
 
-doS :: Parser DoStmt
+doS :: Parser PsDoStmt
 doS =
   try bindS
   <|> exprS
   <?> "do statement"
 
-bindS :: Parser DoStmt
+bindS :: Parser PsDoStmt
 bindS = do
   v <- var
   doarrow_
   e <- expr
   return (BindStmt v e)
 
-exprS :: Parser DoStmt
+exprS :: Parser PsDoStmt
 exprS = ExprStmt <$> expr
 
 ----------------------------------------
@@ -285,7 +291,7 @@ charL = CharL <$> charLit
 -- | Case alternatives
 ----------------------------------------
 
-alt :: Parser Alt
+alt :: Parser PsAlt
 alt = do
   p <- pat
   darrow_
@@ -296,7 +302,7 @@ alt = do
 -- | Patterns
 ----------------------------------------
 
-pat :: Parser Pat
+pat :: Parser PsPat
 pat =
   try litP
   <|> try listP
@@ -307,40 +313,40 @@ pat =
   <?> "pattern"
 
 -- | Literals
-litP :: Parser Pat
+litP :: Parser PsPat
 litP = LitP <$> literal
 
 -- | Variables
-varP :: Parser Pat
+varP :: Parser PsPat
 varP = VarP <$> var
 
 -- | Tuples
 -- | Note: unit expression is represented as (TupT [])
-tupP :: Parser Pat
+tupP :: Parser PsPat
 tupP = TupP <$> parens (pat `sepBy` comma_)
 
 -- | Sum injections
-sumP :: Parser Pat
+sumP :: Parser PsPat
 sumP = SumP <$> (Left <$> (left_ *> pat) <|>  Right <$> (right_ *> pat))
 
 -- | Wild patterns
-wildP :: Parser Pat
+wildP :: Parser PsPat
 wildP = wild_ $> WildP
 
 -- | List patterns
-listP :: Parser Pat
+listP :: Parser PsPat
 listP =
   try nilP
   <|> consP
   <?> "list pattern"
 
-nilP :: Parser Pat
+nilP :: Parser PsPat
 nilP = do
   lbrack_
   rbrack_
   return (ListP NilP)
 
-consP :: Parser Pat
+consP :: Parser PsPat
 consP = do
   cons <- brackets $ do
     hds <- pat `sepBy1` comma_
@@ -382,7 +388,7 @@ nonSumT :: Parser Type
 nonSumT =
   varT
   <|> try ioT
-  <|> conT
+  <|> try conT
   <|> try (parens type')
   <|> tupT
   <|> listT
@@ -394,7 +400,7 @@ varT = VarT . TVar <$> identifier
 
 -- | Type constructors
 conT :: Parser Type
-conT = ConT <$> var
+conT = ConT <$> con
 
 -- | Product types
 -- | Note: () is represented as (TupT [])

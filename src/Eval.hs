@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -11,7 +12,9 @@ import Data.IORef
 import Env (Env)
 import qualified Env as Env
 
+import Var
 import Syntax
+import Type
 import Error
 
 ----------------------------------------
@@ -24,11 +27,20 @@ data Value =
   | TupV [Value]
   | SumV (Either Value Value)
   | ListV [Value]
+  | IOV (IO Value)
   | ClosureV (Thunk -> Eval Value)
+  | DeferredV Thunk
   deriving Show
 
-instance Show (Thunk -> Eval Value) where
+
+instance Show Thunk where
   show _ = "<<thunk>>"
+
+instance Show (Thunk -> Eval Value) where
+  show _ = "<<closure>>"
+
+instance Show (IO Value) where
+  show _ = "<<io value>>"
 
 instance Eq Value where
   LitV v1  == LitV v2  = v1 == v2
@@ -36,6 +48,17 @@ instance Eq Value where
   TupV vs1 == TupV vs2 = and (zipWith (==) vs1 vs2)
   SumV v1  == SumV v2  = v1 == v2
   _        == _        = False
+
+lazyValue :: Eval Value -> Value
+lazyValue = DeferredV . mkThunk
+
+forceValue :: Value -> Eval Value
+forceValue (DeferredV (Thunk th)) = th () >>= forceValue
+forceValue (TupV vs) = TupV <$> sequence (fmap forceValue vs)
+forceValue (SumV (Left v)) = SumV . Left <$> forceValue v
+forceValue (SumV (Right v)) = SumV . Right <$> forceValue v
+forceValue (ListV vs) = ListV <$> sequence (fmap forceValue vs)
+forceValue v = return v
 
 ----------------------------------------
 -- | Thunks
@@ -47,38 +70,36 @@ mkThunk :: Eval Value -> Thunk
 mkThunk e = Thunk (\() -> e)
 
 pureThunk :: Value -> Thunk
-pureThunk v = mkThunk (return v)
-
-createThunkRunner :: EvalEnv -> Var -> Expr -> (Thunk -> Eval Value)
-createThunkRunner env var body = \th -> do
-  ref <- liftIO $ newIORef th
-  evalExpr (env `Env.extend` (var, ref)) body
+pureThunk val = mkThunk (return val)
 
 lookupThunkOf :: Var -> EvalEnv -> Eval (IORef Thunk)
 lookupThunkOf var venv = do
   case Env.lookup var venv of
     Just ref -> return ref
-    Nothing -> throwError (InternalEvaluationError ("missing thunk for: " <> showVar var))
+    Nothing -> throwError (InternalEvalError ("missing thunk for: " <> showVar var))
+
+updateThunk :: MonadIO m => IORef Thunk -> Thunk -> m ()
+updateThunk ref th = do
+  liftIO $ writeIORef ref th
 
 -- force a pure thunk, updating it with the calculated value
 forceThunk :: IORef Thunk -> Eval Value
 forceThunk ref = do
   Thunk th <- liftIO $ readIORef ref
   v <- th ()
-  -- updateThunk ref (pureThunk v)
+  updateThunk ref (pureThunk v)
   return v
 
 -- force a IO thunk, without updating its value!
 forceThunkIO :: IORef Thunk -> Eval Value
 forceThunkIO ref = do
   Thunk th <- liftIO $ readIORef ref
-  v <- th ()
-  return v
+  th ()
 
-updateThunk :: MonadIO m => IORef Thunk -> Thunk -> m ()
-updateThunk ref th = do
-  liftIO $ writeIORef ref th
-
+deferredExpr :: EvalEnv -> Var -> TcExpr -> (Thunk -> Eval Value)
+deferredExpr env var body = \th -> do
+  ref <- liftIO $ newIORef th
+  evalExpr (env `Env.extend` (var, ref)) body
 
 ----------------------------------------
 -- | Primitive operations
@@ -109,23 +130,29 @@ runEval penv m = runExceptT (flip runReaderT penv m)
 -- | Evaluating expressions
 ----------------------------------------
 
-evaluate :: EvalEnv -> PrimEnv -> Expr -> IO (Either EvalError Value)
+evaluate :: EvalEnv -> PrimEnv -> TcExpr -> IO (Either EvalError Value)
 evaluate venv penv expr = runEval penv (evalExpr venv expr)
 
-evalExpr :: EvalEnv -> Expr -> Eval Value
+evaluate':: EvalEnv -> PrimEnv -> TcExpr -> IO (Either EvalError Value)
+evaluate' venv penv expr = runEval penv (evalExpr venv expr >>= forceValue)
+
+
+evalExpr :: EvalEnv -> TcExpr -> Eval Value
 evalExpr env expr = do
+  -- liftIO $ putStrLn $ "evaluating: " <> show expr
   case expr of
     -- VarE
-    VarE var -> do
+    VarE (var, ty) -> do
       th <- lookupThunkOf var env
-      val <- forceThunk th
-      return val
+      if isIOType ty
+        then forceThunkIO th
+        else forceThunk   th
     -- AppE
     AppE fun arg -> do
       -- special case: primitive operations
       penv <- ask
       case fun of
-        VarE var | Just prim <- Env.lookup var penv -> do
+        VarE (var, _) | Just prim <- Env.lookup var penv -> do
           argv <- evalExpr env arg
           let PrimRunner run = primRunner prim
           run argv
@@ -133,11 +160,11 @@ evalExpr env expr = do
           ClosureV evalThunk <- evalExpr env fun
           evalThunk (mkThunk (evalExpr env arg))
     -- LamE
-    LamE var body -> do
-      return (ClosureV (createThunkRunner env var body))
+    LamE (var, _) body -> do
+      return (ClosureV (deferredExpr env var body))
     -- LetE
     LetE bind body -> do
-      let (var, expr', _) = getBind bind
+      let (_, var, expr') = splitBind bind
       evalExpr env (AppE (LamE var body) expr')
     -- LitE
     LitE l -> do
@@ -154,7 +181,8 @@ evalExpr env expr = do
     -- CaseE
     CaseE e alts -> do
       ve <- evalExpr env e
-      case matchAlts ve alts of
+      matched <- matchAlts ve alts
+      case matched of
         Nothing -> throwError (NonExhaustiveCase expr)
         Just (alt, sub) -> do
           patVarRefs <- forM sub $ \(var, val) -> do
@@ -167,7 +195,8 @@ evalExpr env expr = do
       evalExpr env (AppE e (FixE e))
     -- TupE
     TupE es -> do
-      vs <- mapM (evalExpr env) es
+      let vs = lazyValue . evalExpr env <$> es
+      -- vs <- mapM (evalExpr env) es
       return (TupV vs)
     -- SumE
     SumE (Left e) -> do
@@ -178,7 +207,8 @@ evalExpr env expr = do
       return (SumV (Right v))
     -- LitE
     ListE es -> do
-      vs <- mapM (evalExpr env) es
+      let vs = lazyValue . evalExpr env <$> es
+      -- vs <- mapM (evalExpr env) es
       return (ListV vs)
     DoE stmts -> do
       evalDo env stmts
@@ -187,74 +217,92 @@ evalExpr env expr = do
 -- | Evaluating case expressions
 ----------------------------------------
 
-matchAlts :: Value -> [Alt] -> Maybe (Alt, [(Var, Value)])
-matchAlts _ [] = Nothing
-matchAlts v (alt:alts)
-  | Just sub <- match (getAltPat alt) v =
-      Just (alt, sub)
-  | otherwise =
-      matchAlts v alts
+matchAlts :: Value -> [TcAlt] -> Eval (Maybe (TcAlt, [(Var, Value)]))
+matchAlts _ [] = return Nothing
+matchAlts v (alt:alts) = do
+  matched <- match (getAltPat alt) v
+  case matched of
+    Just sub -> return (Just (alt, sub))
+    Nothing  -> matchAlts v alts
 
-match :: Pat -> Value -> Maybe [(Var, Value)]
+match :: TcPat -> Value -> Eval (Maybe [(Var, Value)])
 match (LitP lp) (LitV lv) | lp == lv =
-  Just []
-match (VarP var) val =
-  Just [(var, val)]
+  return (Just [])
+match (VarP (var, _)) val =
+  return (Just [(var, val)])
 match WildP _ =
-  Just []
+  return (Just [])
 match (TupP ps) (TupV vs) =
-  concat <$> sequence (zipWith match ps vs)
+  matchTuple ps vs
 match (SumP (Left p)) (SumV (Left v)) =
   match p v
 match (SumP (Right p)) (SumV (Right v)) =
   match p v
 match (ListP NilP) (ListV []) =
-  Just []
+  return (Just [])
 match (ListP (ConsP hds Nothing)) (ListV vs) =
   matchList hds vs
 match (ListP (ConsP hds (Just tl))) (ListV vs) =
   matchListWithTail tl hds vs
 match _ _ =
-  Nothing
+  return Nothing
 
-matchList :: [Pat] -> [Value] -> Maybe [(Var, Value)]
+matchTuple :: [TcPat] -> [Value] -> Eval (Maybe [(Var, Value)])
+matchTuple [] [] =
+  return (Just [])
+matchTuple ps vs = do
+  fmap (fmap concat . sequence) (sequence (zipWith match ps vs))
+matchList :: [TcPat] -> [Value] -> Eval (Maybe [(Var, Value)])
 matchList [] [] =
-  Just []
+  return (Just [])
 matchList (p:ps) (v:vs) = do
-  sub <- match p v
-  subs <- matchList ps vs
-  return (sub <> subs)
+  matched <- do
+    sub <- match p v
+    subs <- matchList ps vs
+    return (sub <> subs)
+  return matched
 matchList _ _ =
-  Nothing
+  return Nothing
 
-matchListWithTail :: Pat -> [Pat] -> [Value] -> Maybe [(Var, Value)]
+matchListWithTail :: TcPat -> [TcPat] -> [Value] -> Eval (Maybe [(Var, Value)])
 matchListWithTail WildP [] _ =
-  Just []
-matchListWithTail (VarP v) [] vs =
-  Just [(v, ListV vs)]
+  return (Just [])
+matchListWithTail (VarP (v, _)) [] vs =
+  return (Just [(v, ListV vs)])
 matchListWithTail tl (p:ps) (v:vs) = do
-  sub <- match p v
-  subs <- matchListWithTail tl ps vs
-  return (sub <> subs)
+  matched <- do
+    sub <- match p v
+    subs <- matchListWithTail tl ps vs
+    return (sub <> subs)
+  return matched
 matchListWithTail _ _ _ =
-  Nothing
+  return Nothing
 
 ----------------------------------------
 -- | Evaluating do expressions
 ----------------------------------------
 
-evalDo :: EvalEnv -> [DoStmt] -> Eval Value
-evalDo env [ExprStmt e] = do
-  -- let th = mkThunk (evalExpr env e)
-  liftIO $ putStrLn $ "evaluating " <> show e
-  evalExpr env e
-  -- throwError (InternalEvaluationError "evalDo: not implemented")
-evalDo _env (BindStmt _v _e : _xs) = do
-  throwError (InternalEvaluationError "evalDo: not implemented")
-evalDo env (ExprStmt e : xs) = do
-  liftIO $ putStrLn $ "evaluating " <> show e
-  !_ <- evalExpr env e
+evalDo :: EvalEnv -> [TcDoStmt] -> Eval Value
+evalDo env [ExprStmt body] = do
+  IOV io <- evalExpr env body
+  liftIO io
+evalDo env (BindStmt (var, _) body : xs) = do
+  IOV io <- evalExpr env body
+  val <- liftIO io
+  ref <- liftIO $ newIORef (pureThunk val)
+  let env' = env `Env.extend` (var, ref)
+  evalDo env' xs
+evalDo env (ExprStmt body : xs) = do
+  IOV io <- evalExpr env body
+  void (liftIO io)
   evalDo env xs
-  -- throwError (InternalEvaluationError "evalDo: not implemented")
-evalDo _ stmts = do
-  throwError (InternalEvaluationError ("evalDo: unexpected input " <> show stmts))
+evalDo _ _ = do
+  throwError (InternalEvalError "evalDo: unexpected input")
+
+----------------------------------------
+-- | Evaluating expressions to WHNF
+----------------------------------------
+
+-- evalExprWHNF :: EvalEnv -> Expr -> Eval Value
+-- evalExprWHNF env expr = do
+--   case Tup

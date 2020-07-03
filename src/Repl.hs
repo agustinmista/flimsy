@@ -26,8 +26,10 @@ import Env (Env)
 import qualified Env as Env
 import qualified Prim as Prim
 
-import Syntax
+import Var
 import Parser
+import Syntax
+import Type
 import Escape
 import Infer
 import Eval
@@ -183,38 +185,40 @@ processFile update file = do
   say $ "Ok, files loaded:"
   forM_ (loaded st') say
 
-processDecl :: Maybe String -> Decl -> Repl ()
+processDecl :: Maybe String -> PsDecl -> Repl ()
 processDecl mbf (BindD bind) = processBind mbf bind
 
-processBind :: Maybe String -> Bind -> Repl ()
+processBind :: Maybe String -> PsBind -> Repl ()
 processBind mbf bind = do
-  let (var, expr, _) = getBind bind
+  let (_,var, expr) = splitBind bind
   -- type check the body
   tenv <- getTcEnv
-  tsc <- hoistError (typeOfExpr tenv expr)
+  (tsc, expr') <- hoistError (typeCheck tenv expr)
   -- create/update the evaluation thunk
   venv <- getEvalEnv
   let file = maybe interactive id mbf
-  let th = mkThunk (evalExpr venv expr)
+  let th = mkThunk (evalExpr venv expr')
   storeBind var th tsc file
 
-processExpr :: Expr -> Repl ()
+processExpr :: PsExpr -> Repl ()
 processExpr expr = do
   -- type check the expression
   tenv <- getTcEnv
-  ty <- hoistError (typeOfExpr tenv expr)
+  (ty, expr') <- hoistError (typeCheck tenv expr)
   -- if the expression is pure, we can evaluate it right away, but if its
   -- effectful we need to wrap it using a do expression
-  let expr' = case (expr, ty) of
-        (DoE _, Forall _ (IOT _)) -> expr
-        (_,     Forall _ (IOT _)) -> DoE [ExprStmt expr]
-        _                         -> expr
+  let wrapped = case (expr', ty) of
+        (DoE _, Forall _ (IOT _)) -> expr'
+        (_,     Forall _ (IOT _)) -> DoE [ExprStmt expr']
+        _                         -> expr'
   -- evaluate it
   venv <- getEvalEnv
-  res  <- liftIO $ evaluate venv Prim.environment expr'
+  res  <- liftIO $ evaluate' venv Prim.environment wrapped
   val  <- hoistError res
-  -- print it
-  say $ pretty val
+  -- print it, only if it's not ()
+  case val of
+    TupV [] -> return ()
+    _       -> say $ pretty val
 
 ----------------------------------------
 -- | Interactive evaluation
@@ -300,8 +304,9 @@ typeCmd input = continueAfterError $ do
   let str = pack (unwords input)
   expr <- hoistError (parseExpr interactive str)
   tenv <- getTcEnv
-  tsc  <- hoistError (typeOfExpr tenv expr)
-  say $ pretty expr <> " : " <> pretty (tsc)
+  (tsc, expr')  <- hoistError (typeCheck tenv expr)
+  say $ pretty expr'
+  say $ ": " <> pretty tsc
 
 -- :quit
 quitCmd :: [String] -> Repl ()
@@ -376,8 +381,17 @@ echoCmd args = continueAfterError $ do
   let input = pack (unwords args)
   res <- hoistError (parseStdin interactive input)
   case res of
-    Left  expr -> say $ pretty expr
-    Right decl -> say $ pretty decl
+    Left  expr -> do
+      tenv <- getTcEnv
+      (_, expr') <- hoistError (typeCheck tenv expr)
+      say $ pretty expr'
+    Right (BindD bind) -> do
+      let (isVal, var, expr) = splitBind bind
+          -- type check the body
+      tenv <- getTcEnv
+      (tsc, expr') <- hoistError (typeCheck tenv expr)
+      ty <- hoistError (instantiate' tsc)
+      say $ pretty (mergeBind isVal (var,  ty) expr')
 
 ----------------------------------------
 -- | Tab completion
@@ -405,7 +419,7 @@ shell :: Repl a -> IO ()
 shell pre =
   flip evalStateT initState $
     evalRepl
-      (pure "floppy> ")
+      (pure "flimsy> ")
       evalCmd
       replCommands
       (Just ':')
@@ -415,11 +429,11 @@ shell pre =
 printBanner :: Repl ()
 printBanner = say $
   intercalate "\n"
-  [ "  ___ _                  "
-  , " |  _| |___ ___ ___ _ _  "
-  , " |  _| | . | . | . | | | "
-  , " |_| |_|___|  _|  _|_  | "
-  , "           |_| |_| |___| "
-  , "                         "
-  , "Welcome! floppy REPL version 0.1.0.0"
+  [ "  __ _ _                      "
+  , " / _| (_)_ __ ___  ___ _   _  "
+  , "| |_| | | '_ ` _ \\/ __| | | | "
+  , "|  _| | | | | | | \\__ \\ |_| | "
+  , "|_| |_|_|_| |_| |_|___/\\__, | "
+  , "                       |___/  "
+  , "Welcome! flimsy REPL version 0.1.0.0"
   ]

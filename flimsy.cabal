@@ -1,5 +1,5 @@
 cabal-version: >=1.10
-name: floppy
+name: flimsy
 version: 0.1.0.0
 -- synopsis:
 -- description:
@@ -12,7 +12,7 @@ maintainer: mista@chalmers.se
 -- category:
 build-type: Simple
 
-executable floppy
+executable flimsy
   main-is:
     Main.hs
   hs-source-dirs:
@@ -20,7 +20,9 @@ executable floppy
   ghc-options:
     -Wall
   other-modules:
+    Var
     Syntax
+    Type
     Lexer
     Parser
     Pretty

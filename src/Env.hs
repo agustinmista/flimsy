@@ -17,7 +17,7 @@ import Prelude hiding (lookup, filter)
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-import Syntax
+import Var
 
 -------------------------------------------------------------------------------
 -- Typing Environment

@@ -11,6 +11,7 @@ import Control.Monad.Except
 
 import qualified Env as Env
 
+import Var
 import Infer
 import Syntax
 import Parser
@@ -35,43 +36,47 @@ environment = Env.fromList
 
   , prim "floppy_prim_io_getline" "() -> IO String" getline
   , prim "floppy_prim_io_putline" "String -> IO ()" putline
-  , prim "floppy_prim_io_return"  "a -> IO a"       return
+  , prim "floppy_prim_io_return"  "a -> IO a"       ret
 
   , prim "floppy_prim_list_cons" "(a, [a]) -> [a]" cons
 
   ]
 
 getline :: Value -> Eval Value
-getline (TupV []) = String <$> liftIO Text.getLine
+getline (TupV []) = return $ IOV $ do
+  l <- Text.getLine
+  return (LitV (StringL l))
 getline _ = throwError (MarshallingError "getline")
 
 putline :: Value -> Eval Value
-putline (String s) = unit <$> liftIO (Text.putStrLn s)
+putline (LitV (StringL l)) = return $ IOV $ do
+  Text.putStrLn l
+  return (TupV [])
 putline _ = throwError (MarshallingError "putline")
 
 cons :: Value -> Eval Value
-cons (a :*: ListV as) = pure (ListV (a:as))
+cons (TupV [a, ListV as]) = pure (ListV (a:as))
 cons _ = throwError (MarshallingError "cons")
+
+ret :: Value -> Eval Value
+ret val = return $ IOV $ do
+  return val
+
+
 
 ----------------------------------------
 -- | Builders
 ----------------------------------------
 
 prim :: Text -> Text -> (Value -> Eval Value) -> (Var, Prim)
-prim name tystr body = (Var False name, Prim (closeOver ty) (PrimRunner body))
+prim name tystr body = (mkVar name, Prim (closeOver ty) (PrimRunner body))
   where Right ty = parseType boot tystr
-
-unit :: () -> Value
-unit _ = TupV []
 
 pattern Int :: Int -> Value
 pattern Int n = LitV (IntL n)
 
 pattern Bool :: Bool -> Value
 pattern Bool b = LitV (BoolL b)
-
-pattern String :: Text -> Value
-pattern String s = LitV (StringL s)
 
 pattern (:*:) :: Value -> Value -> Value
 pattern (:*:) x y = TupV [x, y]

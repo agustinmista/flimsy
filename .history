@@ -1,100 +1,100 @@
-:t gl
-val gl = getline
-:t getline
-:t getline
-:e getline
-do { getline; getline  } 
-do { getline; getline  } 
-main
-do { putline "x"; putline "y"  } 
-do { getline; getline  } 
-10
-do { getline; getline  } 
-do { getline; getline  } 
-do { getline; getline  } 
-do { getline; getline  } 
-putline "foo"
-getline 
-getline
-pi
-main
-putline "10" 
-putline
-getline 
+case ones of | [x,y|xs] => [x,y]
+case (1,ones) of | (x, y) => 5
+val ones = 1 :: ones
+case (1,ones) of | (x, y) => 5
+val ones = 1 :: ones
+bad
+case (1,bad) of | (x, y) => 5
+case (1,bad) of | (x, y) => x
+val bad = bad
+case (1,bad) of | (x, y) => x
+case (1,bad) of | (x, y) => x
+val bad = bad
+case (1,bad) of | (x, y) => x
+case (1,bad) of | (x, y) => x
+bad
+val bad = bad
+bad
+val bad = fn x => x
+case (1,ones) of | (x, y) => x
+case (1,ones) of | (x, y) = x
+val ones = 1 :: ones
+case (1,2) of | (x, 10) => (x, 10)
+case (1,2) of | (x, 10) => (y, 10)
+case (1,2) of | (x, 10) => (y, x)
+case (1,2) of | (x, y) => (y, x)
+(1,2)
+(1,2)
+(1,2)
+case (1, ones) of | x => 4
+case ones of | x => 4
+:t ones
+val ones = 1 :: ones
+ones
+fst (1, f)
+f
+:t f
+f 1
+:t f
+fun f x = f x
+putline "123"
+:t let val x = y; val y = 3; in x + y end
+1 :: 2 :: []
+1 :: 2 :: []
+:echo case 5 of y => y | _ => getline
+:echo case 5 of y => y | _ => 4
+:t case 5 of y => y | _ => 4
+:t case 5 of y => y | _ => x
+:t (fn x => case x of y => y | _ => x) getline
+:t (fn x => case x of y => y) getline
+:echo fun f io = do { x <- io; putline x }
+:echo fun f io = do { x <- io; putline x }
+:t f
+:t fun f io = do { x <- io; putline x }
+fun f io = do { x <- io; putline x }
+:t let val x = 2; val y = 3; in x + y end
+let val x = 2; val y = 3; in x + y end
+let val x = 2; val y = 3; in x + y
+take 10 ones
+:t ones
+:t val ones = 1 :: ones
+val ones = 1 :: ones
+val ones = 1 :: ones
+:t (fn x => case x of y => y) getline
+:t (fn x => case x of y => y) getline
+:t (fn x => case x of y => y) getline
+:t (fn x => case x of y => y) getline
+:t (fn x => case x of y => y) getline
+:t (fn x => case x of y => y) getline
+:t (fn x => case x of y => y) getline
+:t (fn x => case x of y => y) getline
+:t (fn x => x) getline
+do {getline} + do {getline}
+do {bar} + do {getline}
+1 + do {getline}
+1 + do {getline} 2
+1 + do {getline} 2
+1 + do {getline}
+1 + 2 +3
+1 + 2
+:t do { x <- return (putline "x"); x } 
+:t do { x <- putline "x"; return x } 
+:t do { x <- putline "x"; return x } 
+:t do { x <- putline "x"; x } 
+:t return getline
+:t getline 
+:t do { get <- return getline; x <- get; put <- return putline; put x; putline x }
+do { get <- return getline; x <- get; put <- return putline; put x; putline x }
+:t getline 
+:t take 4 [1,2,3,4,5,6]
+:t getline 
+:t take 4 [1,2,3,4,5,6]
+take 4 [1,2,3,4,5,6] : t
+take 4 [1,2,3,4,5,6]
+take 4 [1,2,3,4,5,6]
+fact 10
+do { get <- return getline; x <- get; put <- return putline; put x; putline x }
 return 10
-:t return
-getline 
-getline 
-:t getline 
-:t main
-:t putline "hi"
-putline "hi"
-putline
-getline
-:t return 10
+snd (return 10)
+snd (return 10)
 return 10
-:t return
-:info
-getline 
-:info
-putline 
-getline 
-return 10
-:t return 
-:t if 5 then 10 else 20 10
-:echo if 5 then 10 else 20 10
-:echo if 5 then 10 else 20
-:t if 5 then 10 else 20
-:t if 5 then 10 else 20
-:t do { putline "foo"; putline "foo" }
-:t do { x <- putline "foo"; putline "foo" }
-:t do { x <- putline "foo"; putline x }
-:t do { x <- putline "foo"; putline "bar"   }
-:t do { putline "foo"  }
-:t do { putline "foo"  }
-:t do { putline  }
-:t do { getline }
-:t getline 
-:t putline 
-:t putline 
-:t getline 
-:t do { getline; getline }
-:t do { getline; getline }
-:t do { getline; getline }
-:t do { getline }
-:t getline 
-do { 10 }
-do { 10 }
-do { 10 }
-do { 10  }
-do {}
-:echo do { foo; x <- bar }
-:echo do { foo; bar }
-:echo do { foo; bar }
-:echo do { foo; bar }
-:echo do { foo; bar }
-:echo do { foo; bar }
-:echo 10 + 20
-:echo 10
-:reload 
-:l lib/test.jm 
-:l lib/deps.jm
-:l lib/deps.jm lib/test.jm 
-:reload 
-baz 10 20
-:browse lib/test.jm 
-:e lib/test.jm 
-:e lib/test.jm 
-:browse lib/test.jm 
-:e lib/test.jm 
-:l lib/test.jm 
-:e lib/test.jm 
-:info 
-:load 
-:reload <interactive>
-:reload 
-:info 
-prim_eq__ (10,false)
-prim_eq__ (10,10)
-prim_eq__ (10,20)
-:info 
