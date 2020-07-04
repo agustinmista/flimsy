@@ -103,7 +103,7 @@ funB :: Parser PsBind
 funB = do
   fun_
   f <- var
-  args <- many1 var
+  args <- many var
   equal_
   e <- expr
   return (FunB f args e)

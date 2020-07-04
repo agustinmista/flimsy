@@ -220,9 +220,8 @@ instance Pretty Type where
   ppr _ (ListT t) =
     brackets $
       pp t
-  ppr p (IOT t) =
-    parensIf (p > 0) $
-      text "IO" <+> (pp' t)
+  ppr _ (IOT t) =
+    text "IO" <+> (pp' t)
 
 ----------------------------------------
 -- | Type schemes
@@ -329,7 +328,7 @@ instance Pretty Value where
     text "<<IO>>"
   ppr _ (ClosureV {}) =
     text "<<closure>>"
-  ppr _ (DeferredV {}) =
+  ppr _ (SuspendedV {}) =
     text "<<thunk>>"
 
 ----------------------------------------

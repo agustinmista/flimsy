@@ -82,7 +82,7 @@ typeCheck env expr = do
   (ty, cs, expr') <- runInfer env (inferExpr expr)
   case runSolve cs of
     Left err -> throwError (err :@ expr)
-    Right subst -> return (closeOver (apply subst ty), (fmap (fmap (apply subst)) expr'))
+    Right subst -> return (closeOver (apply subst ty), fmap (apply subst) <$> expr')
 
 constraintsOfExpr :: TcEnv -> PsExpr -> Either TypeError ([Constraint], Subst, Type, Scheme)
 constraintsOfExpr env expr = do

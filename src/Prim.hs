@@ -5,6 +5,8 @@ module Prim
   , boot
   ) where
 
+
+
 import Data.Text.Lazy (Text, pack)
 import qualified Data.Text.Lazy.IO as Text
 import Control.Monad.Except
@@ -73,8 +75,8 @@ showText = pack . show
 
 flimsy_prim_int_binop :: (Int -> Int -> Int) -> Value -> Eval Value
 flimsy_prim_int_binop f (x :*: y) = do
-  Int x' <- forceValue x
-  Int y' <- forceValue y
+  Int x' <- whnf x
+  Int y' <- whnf y
   return (Int (f x' y'))
 flimsy_prim_int_binop _ _ =
   throwError (MarshallingError "flimsy_prim_int_binop")
@@ -103,7 +105,7 @@ flimsy_prim_io_putline _ =
 
 flimsy_prim_list_cons :: Value -> Eval Value
 flimsy_prim_list_cons (hd :*: tl) =
-  pure (ConsV hd tl)
+  return (ConsV hd tl)
 flimsy_prim_list_cons _ =
   throwError (MarshallingError "flimsy_prim_list_cons")
 
@@ -156,9 +158,8 @@ flimsy_prim_show val = do
             String x' <- flimsy_prim_show x
             String ys' <- showElems y ys
             return (String (x' <> "," <> ys'))
-          showElems x (DeferredV (Thunk th)) = do
-            ys' <- th ()
-            showElems x ys'
+          showElems x (SuspendedV th) = do
+            runThunk th >>= showElems x
           showElems _ _ = do
             throwError (MarshallingError "unexpected value in flimsy_prim_show")
       String s <- showElems hd tl
@@ -167,6 +168,5 @@ flimsy_prim_show val = do
       return (String "<<io>>")
     ClosureV {} -> do
       return (String "<<closure>>")
-    DeferredV (Thunk th) -> do
-      v <- th ()
-      flimsy_prim_show v
+    SuspendedV th -> do
+      runThunk th >>= flimsy_prim_show

@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Repl where
@@ -141,7 +142,7 @@ storeBind var th tsc file = do
     Just bind -> do
       say $ "Shadowing " <> pretty var
       let st' = st { binds = binds st `Env.extend` (var, ReplBind (thunk bind) tsc file) }
-      updateThunk (thunk bind) th
+      liftIO $ writeIORef (thunk bind) th
       put st'
 
 -- | Abort the execution when an error is found
@@ -205,12 +206,14 @@ processExpr expr = do
   -- type check the expression
   tenv <- getTcEnv
   (ty, expr') <- hoistError (typeCheck tenv expr)
-  -- if the expression is pure, we can evaluate it right away, but if its
-  -- effectful we need to wrap it using a do expression
+  -- if the expression is IO, we can evaluate it right away, but if its
+  -- effectful we want to wrap it using a do expression + print
+  let wrap_io   e = AppE (VarE (mkVar "print_io", ioT (VarT (mkTVar "a")) :->: ioT unitT)) e
+  let wrap_pure e = DoE [ExprStmt (AppE (VarE (mkVar "print", stringT :->: ioT unitT)) e)]
   let wrapped = case (expr', ty) of
-        (DoE _, Forall _ (IOT _)) -> expr'
-        (_,     Forall _ (IOT _)) -> DoE [ExprStmt expr']
-        _                         -> DoE [ExprStmt (AppE (VarE (mkVar "print", stringT :->: ioT unitT)) expr')]
+        (_,     Forall _ (IOT (TupT []))) -> expr'
+        (_,     Forall _ (IOT _))         -> wrap_io   expr'
+        _                                 -> wrap_pure expr'
   -- evaluate it
   venv <- getEvalEnv
   res  <- liftIO $ evaluate venv Prim.environment wrapped
@@ -224,8 +227,7 @@ processExpr expr = do
 evalCmd :: String -> Repl ()
 evalCmd source = do
   let input = pack source
-  res <- hoistError (parseStdin interactive input)
-  case res of
+  hoistError (parseStdin interactive input) >>= \case
     Left  expr -> processExpr expr
     Right decl -> processDecl Nothing decl
 
@@ -245,7 +247,6 @@ replCommands =
   , ("info"   , infoCmd)
   , ("edit"   , editCmd)
   , ("echo"   , echoCmd)
-  , ("thunk"  , thunkCmd)
   ]
 
 -- :load
@@ -377,9 +378,8 @@ launchEditor e f = do
 echoCmd :: [String] -> Repl ()
 echoCmd args = continueAfterError $ do
   let input = pack (unwords args)
-  res <- hoistError (parseStdin interactive input)
-  case res of
-    Left  expr -> do
+  hoistError (parseStdin interactive input) >>= \case
+    Left expr -> do
       tenv <- getTcEnv
       (_, expr') <- hoistError (typeCheck tenv expr)
       say $ pretty expr'
@@ -390,20 +390,6 @@ echoCmd args = continueAfterError $ do
       (tsc, expr') <- hoistError (typeCheck tenv expr)
       ty <- hoistError (instantiate' tsc)
       say $ pretty (mergeBind isVal (var,  ty) expr')
-
--- :thunk
-thunkCmd :: [String] -> Repl ()
-thunkCmd args = continueAfterError $ do
-  env <- getEvalEnv
-  forM_ args $ \arg -> do
-    case Env.lookup (mkVar (pack arg)) env of
-      Just ref -> do
-        Thunk th <- liftIO $ readIORef ref
-        res <- liftIO $ runEval Prim.environment (th ())
-        val <- hoistError res
-        say $ pretty val
-      Nothing -> do
-        say $ "Could not find a thunk for " <> arg
 
 ----------------------------------------
 -- | Tab completion

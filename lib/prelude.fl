@@ -13,7 +13,9 @@ fun putline x = flimsy_prim_io_putline x
 fun return  x = flimsy_prim_io_return x
 
 fun show x = flimsy_prim_show x
+
 fun print x = putline (show x)
+fun print_io io = do { x <- io; print x } 
 
 fun (:>) x xs = flimsy_prim_list_cons (x,xs)
 
