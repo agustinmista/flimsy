@@ -2,6 +2,7 @@ module Solve where
 
 import Control.Monad.Except
 
+import Var
 import Type
 import Subst
 import Error

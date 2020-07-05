@@ -16,6 +16,7 @@ import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 
+import Var
 import Type
 import Env (Env, elems)
 

@@ -1,13 +1,9 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Prim
-  ( environment
-  , boot
+  ( primitives
   ) where
 
-
-
-import Data.Text.Lazy (Text, pack)
 import qualified Data.Text.Lazy.IO as Text
 import Control.Monad.Except
 
@@ -19,17 +15,17 @@ import Syntax
 import Parser
 import Eval
 import Error
+import Util
 
-boot :: FilePath
+boot :: File
 boot = "<boot>"
 
 ----------------------------------------
 -- | Primitive operations
 ----------------------------------------
 
-environment :: PrimEnv
-environment = Env.fromList
-
+primitives :: PrimEnv
+primitives = Env.fromList
   -- integer primitives
   [ prim "flimsy_prim_int_add" "(Int,Int) -> Int" (flimsy_prim_int_binop (+))
   , prim "flimsy_prim_int_sub" "(Int,Int) -> Int" (flimsy_prim_int_binop (-))
@@ -158,7 +154,7 @@ flimsy_prim_show val = do
             String x' <- flimsy_prim_show x
             String ys' <- showElems y ys
             return (String (x' <> "," <> ys'))
-          showElems x (SuspendedV th) = do
+          showElems x (ThunkV th) = do
             runThunk th >>= showElems x
           showElems _ _ = do
             throwError (MarshallingError "unexpected value in flimsy_prim_show")
@@ -168,5 +164,5 @@ flimsy_prim_show val = do
       return (String "<<io>>")
     ClosureV {} -> do
       return (String "<<closure>>")
-    SuspendedV th -> do
+    ThunkV th -> do
       runThunk th >>= flimsy_prim_show

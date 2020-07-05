@@ -10,7 +10,7 @@ module Parser
 import Control.Monad
 
 import Data.Functor
-import Data.Text.Lazy (Text)
+
 
 import Text.Parsec
 import Text.Parsec.Text.Lazy
@@ -19,34 +19,39 @@ import Lexer
 import Var
 import Syntax
 import Type hiding (ioT)
+import Util
 
 ----------------------------------------
 -- | Parsing functions
 ----------------------------------------
 
 -- | Parse the interactive input, either expression or declaration
-parseStdin :: FilePath -> Text -> Either ParseError (Either PsExpr PsDecl)
-parseStdin = parse (contents stdin)
+parseStdin :: File -> Text -> Either ParseError (Either PsExpr PsDecl)
+parseStdin = mkParser stdin
 
 -- | Parse all top level binds in a source file
-parseSourceFile :: FilePath -> Text -> Either ParseError [PsDecl]
-parseSourceFile = parse (contents (many decl))
+parseSourceFile :: File -> Text -> Either ParseError [PsDecl]
+parseSourceFile = mkParser (many decl)
 
 -- | Parse a single expression
-parseExpr :: FilePath -> Text -> Either ParseError PsExpr
-parseExpr = parse (contents expr)
+parseExpr :: File -> Text -> Either ParseError PsExpr
+parseExpr = mkParser expr
 
 -- | Parse a type
-parseType :: FilePath -> Text -> Either ParseError Type
-parseType = parse (contents type')
+parseType :: File -> Text -> Either ParseError Type
+parseType = mkParser type'
 
 -- | Parse a expression bind
-parseBind :: FilePath -> Text -> Either ParseError PsBind
-parseBind = parse (contents bind)
+parseBind :: File -> Text -> Either ParseError PsBind
+parseBind = mkParser bind
 
 -- | Parse a top level declaration
-parseDecl :: FilePath -> Text -> Either ParseError PsDecl
-parseDecl = parse (contents decl)
+parseDecl :: File -> Text -> Either ParseError PsDecl
+parseDecl = mkParser decl
+
+-- | Build a top-level parser
+mkParser :: Parser a -> File -> Text -> Either ParseError a
+mkParser parser = parse (contents parser) . toFilePath
 
 ----------------------------------------
 -- | Stdin (either expression or declaration)
@@ -74,6 +79,9 @@ bindD = BindD <$> bind
 
 var :: Parser Var
 var = Var <$> identifier
+
+varOrInfixOp :: Parser Var
+varOrInfixOp = Var <$> (try (parens operator) <|> identifier)
 
 con :: Parser Var
 con = Var <$> identifierT
@@ -170,7 +178,7 @@ litE = LitE <$> literal
 
 -- | Variables
 varE :: Parser PsExpr
-varE = VarE <$> var
+varE = VarE <$> varOrInfixOp
 
 -- | Lambda abstractions
 lamE :: Parser PsExpr

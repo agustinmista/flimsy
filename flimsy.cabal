@@ -29,12 +29,14 @@ executable flimsy
     Infer
     Eval
     Repl
+    ReplState
     Env
     Error
     Prim
     Subst
     Solve
     Escape
+    Util
   other-extensions:
     OverloadedStrings
     FlexibleInstances
@@ -42,7 +44,6 @@ executable flimsy
   build-depends:
     base >=4 && <5,
     text,
-    bytestring,
     mtl,
     containers,
     parsec,

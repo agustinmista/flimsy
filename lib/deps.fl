@@ -1,5 +1,5 @@
 
-val c = e
+val c = a
 
 val b = (c, d)
 

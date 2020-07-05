@@ -1,100 +1,100 @@
-print_io (putline "xx")
-print_io (putline "aaa")
-print_io (putline "xx")
-:e lib/prelude.fl 
-print_io (putline "xx")
-print_io (putline 10)
-print_io getline
-print_io (putline "aaa")
-putline "hhhh"
-print_io (putline "aaa")
-take 3 [1,2,3,4,5]
-putline "hhhh"
-print_io (putline "aaa")
-getline
-putline "hhhh"
-take 3 [1,2,3,4,5]
-:t print_io getline
-putline "xx"
-print_io getline
-:t print_io getline
-print_io getline
-putline "xx"
-10
-10
-(putline "xx")
-print_io (return 10)
-print_io (return 10)
-:t print_io
-(putline "xx")
-print_io (putline "xx")
-:e lib/prelude.fl 
-:t print_io
-print_io (putline "xx")
-print_io (getline)
-fun print_io io = do { x <- io; print x }
-do { putline "xx" }
-putline "xx"
-:t getline
-getline
-getline
-take 3 ones
-val ones = 1 :> ones
-take 3 ones
-val ones = 1 :> ones
-take 3 ones
-take 3 ones
-val ones = 1 :> ones
-take 3 ones
-val ones = 1 :> ones
-take 10 ones
-val ones = 1 :> ones
-take 10 ones
-val ones = 1 :> ones
-take 2 [4,5,6]
-take 2 [4,5,6]
-take 2 [4,5,6]
-take 2 [4,5,6]
-take 2 [4,5,6]
-if fst (false, true) then 1 else 2
-if foo (foo false) then 1 else 2
-if foo false then 1 else 2
-fun foo x = x
-fun foo x = x==x
-let foo x = x==x
-print_io (return 10)
-fun print_io io = do { x <- io; print x }
-f 10 + 20
-fun f x = x
-do { print_io (return 10) } 
-print_io (return 10)
-print_io (return 10)
-fun print_io io = do { x <- io; print x }
-print_io (return 10)
-print_io 10
-fun print_io io = do { x <- io; print x }
-:t print_io
-fun print_io io = do { x <- io; print x }
-:t print_io
-fun print_io io = do { x <- io; print x }
-print_io (return 10)
-fun print_io io = do { x <- io; print x }
-print 10
-print_io getline
-fun print_io io = do { x <- io; print x }
-:t foo
+:l lib/deps.fl 
+:l lib/deps.fl 
+:e lib/deps.fl 
+:e lib/deps.fl 
+:l lib/deps.fl 
+:l lib/wrong.fl 
+fib 30
+fib 30
+fib 20
+fib 100
+fib 10
+:l lib/prelude.fl 
+:l lib/do.fl 
+foo 10 20
 foo
-fun foo = getline
-take 2 [4,5,6]
-take 2 [4,5,6]
-take 2 [4,5,6]
-take 2 [4,5,6]
-take 2 [4,5,6]
-take 2 [4,5,6]
-take 2 [4,5,6]
-take 2 [4,5,6]
-:thunk x
-val x = id 42
-id 5
-fun id x = x
-:thunk ones
+:browse lib/test.fl 
+:l lib/test.fl 
+:l
+:reload
+:! cat flimsy.cabal 
+:! ls
+:t return
+:t return
+:t retunr
+return
+fact 10
+getLine 
+putLine "aaa"
+take 10 nats
+val nats = 0 :: map (fn x => x + 1) nats 
+take 10 nats
+getLine
+putLine "aaa"
+putLine "aaa"
+main
+:t main
+main
+print "aaa"
+print "aaa"
+print "" 
+print ""foo""
+print "foo"
+print (return 10)
+main
+main
+print (return 10)
+print_io (return 10)
+return 10
+print_io (return 10)
+return 10
+print (return 10)
+main
+main
+main
+print_io (return 10)
+print_io (return 10)
+:t print_io 
+print_io (return 10)
+print (putLine  "10")
+print_io (putLine  "10")
+print (putLine  "10")
+putLine  "10"
+putStrLn "10"
+putStrLn "10"
+"foo"
+10
+10
+putLine "aaa"
+print_io (return ())
+putLine "aaa"
+print_io (return ())
+print_io (return ())
+print_io (return ())
+print ()
+print "1,2,3"
+print_io (putLine "aaa")
+print_io (putLine "aaa")
+print_io (putLine "aaa")
+print_io (putLine  "aaa")
+putLine  "aaa"
+putline "aaa"
+:t fn io => print_io io 
+:t fun io => print_io io 
+:t print_io
+:type do { putLine "aaa" }
+:type  do { putLine "aaa" }
+:type   do { print_io (do { putLine "aaa" })}
+:echo do { print_io (do { putLine "aaa" })}
+do { print_io (do { putLine "aaa" })}
+:t do { print_io (do { putLine "aaa" })}
+:t do { putLine "aaa" }
+do { putLine "aaa" }
+10
+10
+do { putLine "aaa" }
+putLine "aaa"
+:t (.)
+:t .
+fun (.) f g = fn x => f (g x)  
+main

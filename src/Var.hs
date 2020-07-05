@@ -12,5 +12,18 @@ newtype Var = Var Text
 mkVar :: Text -> Var
 mkVar = Var
 
-showVar :: Var -> Text
-showVar (Var t) = t
+varName :: Var -> Text
+varName (Var t) = t
+
+----------------------------------------
+-- | Variables
+----------------------------------------
+
+newtype TVar = TVar Text
+  deriving (Show, Eq, Ord)
+
+mkTVar :: Text -> TVar
+mkTVar = TVar
+
+tVarName :: TVar -> Text
+tVarName (TVar v) = v

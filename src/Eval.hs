@@ -18,6 +18,7 @@ import Syntax
 import Type
 import Error
 
+
 ----------------------------------------
 -- | Values
 ----------------------------------------
@@ -30,16 +31,14 @@ data Value =
   | NilV
   | ConsV Value Value
   | IOV (IO Value)
-  | ClosureV (Thunk -> Eval Value)
-  | SuspendedV Thunk
+  | ClosureV Closure
+  | ThunkV Thunk
   deriving Show
 
 
 instance Show Thunk where
   show _ = "<<thunk>>"
 
-instance Show (Thunk -> Eval Value) where
-  show _ = "<<closure>>"
 
 instance Show (IO Value) where
   show _ = "<<io value>>"
@@ -52,6 +51,23 @@ instance Eq Value where
   NilV          == NilV           = True
   ConsV hd1 tl1 == ConsV hd2 tl2  = hd1 == hd2 && tl1 == tl2
   _             == _              = False
+
+----------------------------------------
+-- | Closures
+----------------------------------------
+
+newtype Closure = Closure (Thunk -> Eval Value)
+
+instance Show Closure where
+  show _ = "<<closure>>"
+
+newClosure :: EvalEnv -> Var -> TcExpr -> Closure
+newClosure env var body = Closure $ \th -> do
+  ref <- liftIO $ newIORef th
+  evalExpr (env `Env.extend` (var, ref)) body
+
+runClosure :: Closure -> Thunk -> Eval Value
+runClosure (Closure clo) th = clo th
 
 ----------------------------------------
 -- | Thunks
@@ -69,16 +85,11 @@ pureThunk :: Value -> Thunk
 pureThunk val = mkThunk (return val)
 
 whnf :: Value -> Eval Value
-whnf (SuspendedV th) = runThunk th >>= whnf
-whnf v               = return v
+whnf (ThunkV th) = runThunk th >>= whnf
+whnf v           = return v
 
-closure :: EvalEnv -> Var -> TcExpr -> Value
-closure env var body = ClosureV $ \th -> do
-  ref <- liftIO $ newIORef th
-  evalExpr (env `Env.extend` (var, ref)) body
-
-suspendedExpr :: EvalEnv -> TcExpr -> Value
-suspendedExpr env expr = SuspendedV (mkThunk (evalExpr env expr))
+thunk :: EvalEnv -> TcExpr -> Value
+thunk env expr = ThunkV (mkThunk (evalExpr env expr))
 
 -- force a pure thunk ref, updating it with the calculated value
 forceThunkRef :: IORef Thunk -> Eval Value
@@ -98,7 +109,7 @@ lookupThunkOf :: Var -> EvalEnv -> Eval (IORef Thunk)
 lookupThunkOf var venv = do
   case Env.lookup var venv of
     Just ref -> return ref
-    Nothing -> throwError (InternalEvalError ("missing thunk for: " <> showVar var))
+    Nothing -> throwError (InternalEvalError ("missing thunk for: " <> varName var))
 
 ----------------------------------------
 -- | Primitive operations
@@ -107,11 +118,21 @@ lookupThunkOf var venv = do
 newtype PrimRunner = PrimRunner (Value -> Eval Value)
 
 data Prim = Prim
-  { primTy :: Scheme
-  , primRunner :: PrimRunner
+  { prim_scheme :: Scheme
+  , prim_runner :: PrimRunner
   }
 
 type PrimEnv = Env Prim
+
+runPrim :: Prim -> Value -> Eval Value
+runPrim prim val = runner val
+  where (PrimRunner runner) = prim_runner prim
+
+lookupPrim :: TcExpr -> Eval (Maybe Prim)
+lookupPrim (VarE (v, _)) = do
+  penv <- ask
+  return (Env.lookup v penv)
+lookupPrim _ = return Nothing
 
 ----------------------------------------
 -- | Evaluation Monad
@@ -147,18 +168,16 @@ evalExpr env expr = do
     -- AppE
     AppE fun arg -> do
       -- special case: primitive operations
-      penv <- ask
-      case fun of
-        VarE (var, _) | Just prim <- Env.lookup var penv -> do
+      lookupPrim fun >>= \case
+        Just prim -> do
           argv <- evalExpr env arg
-          let PrimRunner run = primRunner prim
-          run argv
-        _ -> do
-          ClosureV evalThunk <- evalExpr env fun
-          evalThunk (mkThunk (evalExpr env arg))
+          runPrim prim argv
+        Nothing -> do
+          ClosureV clo <- evalExpr env fun
+          runClosure clo (mkThunk (evalExpr env arg))
     -- LamE
     LamE (var, _) body -> do
-      return (closure env var body)
+      return (ClosureV (newClosure env var body))
     -- LetE
     LetE bind body -> do
       let (_, var, expr') = splitBind bind
@@ -191,21 +210,21 @@ evalExpr env expr = do
       evalExpr env (AppE e (FixE e))
     -- TupE
     TupE es -> do
-      let vs = suspendedExpr env <$> es
+      let vs = thunk env <$> es
       return (TupV vs)
     -- SumE
     SumE (Left e) -> do
-      let v = suspendedExpr env e
+      let v = thunk env e
       return (SumV (Left v))
     SumE (Right e) -> do
-      let v = suspendedExpr env e
+      let v = thunk env e
       return (SumV (Right v))
     -- ListE
     ListE [] -> do
       return NilV
     ListE (e:es) -> do
-      let hd = suspendedExpr env e
-      let tl = suspendedExpr env (ListE es)
+      let hd = thunk env e
+      let tl = thunk env (ListE es)
       return (ConsV hd tl)
     DoE stmts -> do
       evalDo env stmts
@@ -230,7 +249,7 @@ matchAlts :: [TcAlt] -> Value -> Eval (Maybe (TcAlt, [(Var, Value)]))
 matchAlts [] _ = return Nothing
 matchAlts (alt:alts) v = do
   match (getAltPat alt) v >>= \case
-    (Just sub,  _) -> return (Just (alt, sub))
+    (Just sub, _)  -> return (Just (alt, sub))
     (Nothing,  v') -> matchAlts alts v'
 
 -- Match a value against a single pattern and possibly return a substitution of
@@ -244,7 +263,7 @@ match pat val = do
     (VarP (var, _), _) -> return (Just [(var, val)], val)
     -- From this point onwards, if the value is deferred then we need to force
     -- its evaluation and continue matching the result.
-    (p, SuspendedV th) -> runThunk th >>= match p
+    (p, ThunkV th) -> runThunk th >>= match p
     -- The rest of the patterns are only satisfied by their corresponding values.
     (LitP p, LitV v) | p == v -> return (Just [], val)
     (SumP p, SumV v)          -> matchSum p v
@@ -262,7 +281,6 @@ matchSum (Right p) (Right v) = do
   return (sub, SumV (Right v'))
 matchSum _ v =
   return (Nothing, SumV v)
-
 
 -- Match tuple values from left to right
 matchTuple :: [TcPat] -> [Value] -> Eval (Maybe [(Var, Value)], Value)
@@ -302,18 +320,20 @@ matchList _ v = do
 -- Do expressions are evaluated strictly, because we want their effects to
 -- happen in the appropriate order.
 evalDo :: EvalEnv -> [TcDoStmt] -> Eval Value
-evalDo env [ExprStmt body] = do
-  IOV io <- whnf =<< evalExpr env body
-  liftIO io
-evalDo env (BindStmt (var, _) body : xs) = do
-  IOV io <- whnf =<< evalExpr env body
-  val <- liftIO io
-  ref <- liftIO $ newIORef (pureThunk val)
-  let env' = env `Env.extend` (var, ref)
-  evalDo env' xs
-evalDo env (ExprStmt body : xs) = do
-  IOV io <- whnf =<< evalExpr env body
-  void (liftIO io)
-  evalDo env xs
-evalDo _ _ = do
-  throwError (InternalEvalError "evalDo: unexpected input")
+evalDo env stmts = do
+  case stmts of
+    [ExprStmt body] -> do
+      IOV io <- whnf =<< evalExpr env body
+      v <- liftIO io
+      return (IOV (return v))
+    (BindStmt (var, _) body : xs) -> do
+      IOV io <- whnf =<< evalExpr env body
+      val <- liftIO io
+      ref <- liftIO $ newIORef (pureThunk val)
+      let env' = env `Env.extend` (var, ref)
+      evalDo env' xs
+    (ExprStmt body : xs) -> do
+      IOV io <- whnf =<< evalExpr env body
+      void (liftIO io)
+      evalDo env xs
+    _ -> throwError (InternalEvalError "evalDo: unexpected input")

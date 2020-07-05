@@ -3,29 +3,17 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Repl where
 
-import Prelude hiding (readFile)
-
 import Control.Exception (SomeException(..))
+import Control.Monad.State.Strict
 import Control.Monad.Catch (catch)
 
 import System.Exit
-import System.Process (rawSystem)
 import System.Console.Repline
 
-import Data.IORef
-
 import Data.List
-import Data.Text.Lazy (pack)
-import Data.Text.Lazy.IO (readFile)
-
-import Data.Foldable
-import Control.Monad.State.Strict
-
-import Data.Set (Set)
 import qualified Data.Set as Set
-import Env (Env)
-import qualified Env as Env
-import qualified Prim as Prim
+
+import qualified Data.Text.Lazy as Text
 
 import Var
 import Parser
@@ -35,93 +23,10 @@ import Escape
 import Infer
 import Eval
 import Pretty
+import Util
 
-interactive :: FilePath
-interactive = "<interactive>"
-
-prelude :: FilePath
-prelude = "lib/prelude.fl"
-
-----------------------------------------
--- | Repl internal state
-----------------------------------------
-
--- | Binds environment
-
-data ReplBind =
-  ReplBind
-  { thunk  :: IORef Thunk
-  , scheme :: Scheme
-  , origin :: FilePath
-  }
-
-type BindEnv = Env ReplBind
-
--- | Internal state
-
-data ReplState =
-  ReplState
-  { binds   :: BindEnv
-  , prims   :: PrimEnv
-  , loaded  :: Set FilePath
-  , current :: Maybe FilePath
-  , editor  :: FilePath
-  }
-
-initState :: ReplState
-initState = ReplState
-  { binds   = Env.empty
-  , prims   = Prim.environment
-  , loaded  = Set.empty
-  , current = Nothing
-  , editor  = "vim"
-  }
-
-getReplState :: MonadState ReplState m => m ReplState
-getReplState = get
-
-getReplBinds :: MonadState ReplState m => m BindEnv
-getReplBinds = gets binds
-
-getLoadedFiles :: MonadState ReplState m => m (Set FilePath)
-getLoadedFiles = gets loaded
-
-setLoadedFiles :: MonadState ReplState m => Set FilePath -> m ()
-setLoadedFiles files = modify' $ \st -> st { loaded = files }
-
-getCurrentFile :: MonadState ReplState m => m (Maybe FilePath)
-getCurrentFile = gets current
-
-setCurrentFile :: MonadState ReplState m => FilePath -> m ()
-setCurrentFile f = modify' $ \st -> st { current = Just f }
-
-getEditor :: MonadState ReplState m => m FilePath
-getEditor = gets editor
-
-setEditor :: MonadState ReplState m => FilePath -> m ()
-setEditor e = modify' $ \st -> st { editor = e }
-
--- | Project the internal state into the type checking environment
-getTcEnv :: MonadState ReplState m => m TcEnv
-getTcEnv = do
-  bindTys <- fmap scheme <$> gets binds
-  primTys <- fmap primTy <$> gets prims
-  return (Env.merge bindTys primTys)
-
--- | Project the internal state into the evaluation environment
-getEvalEnv :: MonadState ReplState m => m EvalEnv
-getEvalEnv = fmap thunk <$> gets binds
-
--- | Remove all the binds created inside the REPL
-unloadInteractive :: MonadState ReplState m => m ()
-unloadInteractive = modify' $ \st ->
-  st { binds = Env.filter ((interactive /=) . origin) (binds st) }
-
--- | Remove all the binds created inside the REPL
-unloadBindsOfFile :: MonadState ReplState m => FilePath -> m ()
-unloadBindsOfFile file = modify' $ \st ->
-  st { binds = Env.filter ((file /=) . origin) (binds st) }
-
+import ReplState
+import qualified Env as Env
 
 ----------------------------------------
 -- | The Read-Eval-Print-Loop monad
@@ -130,20 +35,6 @@ unloadBindsOfFile file = modify' $ \st ->
 -- | The Repl type
 type Repl a = HaskelineT (StateT ReplState IO) a
 
--- | Store a bind in the internal state
-storeBind :: Var -> Thunk -> Scheme -> FilePath -> Repl ()
-storeBind var th tsc file = do
-  st <- getReplState
-  case Env.lookup var (binds st) of
-    Nothing -> do
-      ref <- liftIO $ newIORef th
-      let st' = st { binds = binds st `Env.extend` (var, ReplBind ref tsc file) }
-      put st'
-    Just bind -> do
-      say $ "Shadowing " <> pretty var
-      let st' = st { binds = binds st `Env.extend` (var, ReplBind (thunk bind) tsc file) }
-      liftIO $ writeIORef (thunk bind) th
-      put st'
 
 -- | Abort the execution when an error is found
 hoistError :: Pretty e => Either e a -> Repl a
@@ -155,14 +46,11 @@ hoistError (Left err) = do
 continueAfterError :: Repl () -> Repl ()
 continueAfterError m = catch m (\SomeException {} -> return ())
 
-say :: String -> Repl ()
-say = liftIO . putStrLn
-
 ----------------------------------------
 -- | Processing inputs
 ----------------------------------------
 
-processFile :: Bool -> FilePath -> Repl ()
+processFile :: Bool -> File -> Repl ()
 processFile update file = do
   say $ "Loading " <> file
   -- unload any previous bind from this file, as well as any interactive bind
@@ -170,26 +58,26 @@ processFile update file = do
   unloadInteractive
   unloadBindsOfFile file
   -- parse the input file
-  contents <- liftIO $ readFile file
+  contents <- liftIO $ readSourceFile file
   decls <- hoistError (parseSourceFile file contents)
   -- compute a topological sort of the declarations in the target file
   tenv <- getTcEnv
+  let sccs = calculateSSCs tenv decls
+  forM_ sccs (say . Text.pack . show)
   sortedDecls <- hoistError (tryTopSort tenv decls)
   -- process each declarations in the safe order computed above
   mapM_ (processDecl (Just file)) sortedDecls
   -- add the file to the list of loaded ones
-  st <- getReplState
-  let st' = st { loaded = Set.insert file (loaded st) }
-  put st'
+  loaded <- registerLoadedFile file
   -- set the input as current file and report the loaded files
   when update (setCurrentFile file)
   say $ "Ok, files loaded:"
-  forM_ (loaded st') say
+  forM_ loaded say
 
-processDecl :: Maybe String -> PsDecl -> Repl ()
+processDecl :: Maybe File -> PsDecl -> Repl ()
 processDecl mbf (BindD bind) = processBind mbf bind
 
-processBind :: Maybe String -> PsBind -> Repl ()
+processBind :: Maybe File -> PsBind -> Repl ()
 processBind mbf bind = do
   let (_,var, expr) = splitBind bind
   -- type check the body
@@ -199,7 +87,7 @@ processBind mbf bind = do
   venv <- getEvalEnv
   let file = maybe interactive id mbf
   let th = mkThunk (evalExpr venv expr')
-  storeBind var th tsc file
+  registerBind var th tsc file
 
 processExpr :: PsExpr -> Repl ()
 processExpr expr = do
@@ -208,25 +96,27 @@ processExpr expr = do
   (ty, expr') <- hoistError (typeCheck tenv expr)
   -- if the expression is IO, we can evaluate it right away, but if its
   -- effectful we want to wrap it using a do expression + print
-  let wrap_io   e = AppE (VarE (mkVar "print_io", ioT (VarT (mkTVar "a")) :->: ioT unitT)) e
-  let wrap_pure e = DoE [ExprStmt (AppE (VarE (mkVar "print", stringT :->: ioT unitT)) e)]
-  let wrapped = case (expr', ty) of
-        (_,     Forall _ (IOT (TupT []))) -> expr'
-        (_,     Forall _ (IOT _))         -> wrap_io   expr'
-        _                                 -> wrap_pure expr'
-  -- evaluate it
+  let wrap_pure t e  = DoE [ExprStmt (VarE (mkVar "print", t :->: ioT unitT) `AppE` e)]
+  let wrap_io_unit e = DoE [ExprStmt e]
+  let wrap_io t e    = DoE [BindStmt (mkVar "_x", t) e,
+                            ExprStmt (VarE (mkVar "print", t :->: ioT unitT) `AppE` VarE (mkVar "_x", t))]
+  let wrapped =
+        case ty of
+          Forall _ (IOT (TupT [])) -> wrap_io_unit expr'
+          Forall _ (IOT t)         -> wrap_io t expr'
+          Forall _ t               -> wrap_pure t expr'
+  -- finally, we can evaluate it
   venv <- getEvalEnv
-  res  <- liftIO $ evaluate venv Prim.environment wrapped
+  penv <- getPrimEnv
+  res  <- liftIO $ evaluate venv penv wrapped
   void (hoistError res)
-  return ()
 
 ----------------------------------------
 -- | Interactive evaluation
 ----------------------------------------
 
-evalCmd :: String -> Repl ()
-evalCmd source = do
-  let input = pack source
+evalCmd :: Text -> Repl ()
+evalCmd input = do
   hoistError (parseStdin interactive input) >>= \case
     Left  expr -> processExpr expr
     Right decl -> processDecl Nothing decl
@@ -235,101 +125,74 @@ evalCmd source = do
 -- | Commands
 ----------------------------------------
 
-replCommands :: [(String, [String] -> Repl ())]
-replCommands =
-  [ ("load"   , loadCmd)
-  , ("reload" , reloadCmd)
-  , ("browse" , browseCmd)
-  , ("type"   , typeCmd)
-  , ("quit"   , quitCmd)
-  , ("shell"  , shellCmd)
-  , ("!"      , shellCmd)
-  , ("info"   , infoCmd)
-  , ("edit"   , editCmd)
-  , ("echo"   , echoCmd)
-  ]
-
 -- :load
-loadCmd :: [String] -> Repl ()
+loadCmd :: [Text] -> Repl ()
 loadCmd input = continueAfterError $ do
   case input of
-    []  -> unloadAll
+    []  -> unloadAllFiles >> say "Ok, no modules loaded."
     [f] -> processFile True f
-    _   -> say $ "load modules one by one!"
+    _   -> say "Load modules one by one!"
 
--- unload all the files except for the prelude
-unloadAll :: Repl ()
-unloadAll = do
-  let keep = [prelude]
-  modify' $ \st ->
-    st { binds = Env.filter (\b -> origin b `elem` keep) (binds st)
-       , loaded = Set.filter (\f -> f `elem` keep) (loaded st)
-       }
-  say $ "Ok, no modules loaded."
-
--- :load
-reloadCmd :: [String] -> Repl ()
+-- :reload
+reloadCmd :: [Text] -> Repl ()
 reloadCmd input = continueAfterError $ do
   curr <- getCurrentFile
   case (input, curr) of
-    ([], Just file) -> do
-      processFile True file
-    ([], Nothing) -> do
-      say $ "Nothing to reload"
-    _   -> say $ "This command accepts no arguments"
+    ([], Just file) -> processFile True file
+    ([], Nothing)   -> say $ "Nothing to reload"
+    _               -> say $ "This command accepts no arguments"
 
 
 -- :browse
-browseCmd :: [String] -> Repl ()
+browseCmd :: [Text] -> Repl ()
 browseCmd input = do
   env <- getReplBinds
   ld <- getLoadedFiles
   case input of
     [] -> forM_ (Env.toList env) $ \(var, bind) -> do
-      say $ pretty var <> " : " <> pretty (scheme bind)
+      say $ pretty var <> " : " <> pretty (bind_scheme bind)
     files -> forM_ files $ \file -> do
       if Set.member file ld
         then do
           say $ "Loaded from " <> file <> ":"
-          let bs = Env.toList (Env.filter ((file ==) . origin) env)
+          let bs = Env.toList (Env.filter ((file ==) . bind_origin) env)
           forM_ bs $ \(var, bind) -> do
-            say $ pretty var <> " : " <> pretty (scheme bind)
+            say $ pretty var <> " : " <> pretty (bind_scheme bind)
         else do
           say $ "File " <> file <> " is not loaded!"
 
 -- :type
-typeCmd :: [String] -> Repl ()
+typeCmd :: [Text] -> Repl ()
 typeCmd input = continueAfterError $ do
-  let str = pack (unwords input)
+  let str = Text.unwords input
   expr <- hoistError (parseExpr interactive str)
   tenv <- getTcEnv
   (tsc, expr')  <- hoistError (typeCheck tenv expr)
-  say $ pretty expr'
-  say $ ": " <> pretty tsc
+  say $ pretty expr' <> " : " <> pretty tsc
 
 -- :quit
-quitCmd :: [String] -> Repl ()
+quitCmd :: [Text] -> Repl ()
 quitCmd _ = liftIO exitSuccess
 
 -- :!
-shellCmd :: [String] -> Repl ()
+shellCmd :: [Text] -> Repl ()
 shellCmd input = continueAfterError $ do
   case input of
     (cmd:args) -> do
-      liftIO $ void (rawSystem cmd args)
+      liftIO $ runShellCommand cmd args
     _ -> do
       say $ "empty shell command"
 
 -- :info
-infoCmd :: [String] -> Repl ()
+infoCmd :: [Text] -> Repl ()
 infoCmd [] = printInternalState
 infoCmd xs = printInfo xs
 
-printInfo :: [String] -> Repl ()
+printInfo :: [Text] -> Repl ()
 printInfo args = do
-  env <- getReplState
+  st <- getReplState
   forM_ args $ \arg -> do
-    case Env.lookup (mkVar (pack arg)) (binds env) of
+    case Env.lookup (mkVar arg) (repl_binds st) of
       Nothing -> do
         say $ "Not in scope: " <> arg
       Just (ReplBind _ ty file) -> do
@@ -339,23 +202,23 @@ printInternalState :: Repl ()
 printInternalState = do
   st <- getReplState
   say $ "Loaded primitives:"
-  forM_ (Env.toList (prims st)) $ \(v, Prim ty _) -> do
+  forM_ (Env.toList (repl_prims st)) $ \(v, Prim ty _) -> do
     say $ pretty v <> " : " <> pretty ty
   say $ "============="
   say $ "Loaded variables:"
-  forM_ (Env.toList (binds st)) $ \(v, ReplBind _ ty file) -> do
+  forM_ (Env.toList (repl_binds st)) $ \(v, ReplBind _ ty file) -> do
     say $ pretty v <> " : " <> pretty ty <> "  -- defined at " <> file
   say $ "============="
   say $ "Loaded files:"
-  forM_ (Set.toList (loaded st)) $ \f -> do
+  forM_ (Set.toList (repl_loaded st)) $ \f -> do
     say f
   say $ "============="
-  case current st of
+  case repl_current st of
     Nothing -> say $ "No file is currently in focus"
     Just f  -> say $ "Current file in focus: " <> f
 
 -- :edit
-editCmd :: [String] -> Repl ()
+editCmd :: [Text] -> Repl ()
 editCmd input = continueAfterError $ do
   curr <- getCurrentFile
   e <- getEditor
@@ -365,20 +228,19 @@ editCmd input = continueAfterError $ do
     ([f], _)       -> launchEditor e f
     _              -> say "Edit files one by one!"
 
-launchEditor :: FilePath -> FilePath -> Repl ()
+launchEditor :: File -> File -> Repl ()
 launchEditor e f = do
   -- launch the external editor
-  liftIO $ void (rawSystem e [f])
+  liftIO $ runShellCommand e [f]
   ld <- getLoadedFiles
   -- if the file was previously loaded, then reload it
-  when (f `Set.member` ld) $
+  when (f `Set.member` ld) $ do
     processFile True f
 
 -- :echo
-echoCmd :: [String] -> Repl ()
-echoCmd args = continueAfterError $ do
-  let input = pack (unwords args)
-  hoistError (parseStdin interactive input) >>= \case
+echoCmd :: [Text] -> Repl ()
+echoCmd input = continueAfterError $ do
+  hoistError (parseStdin interactive (Text.unwords input)) >>= \case
     Left expr -> do
       tenv <- getTcEnv
       (_, expr') <- hoistError (typeCheck tenv expr)
@@ -398,41 +260,58 @@ echoCmd args = continueAfterError $ do
 completer :: WordCompleter (StateT ReplState IO)
 completer n = do
   let cmds = [ ':' : cmd | cmd <- fst <$> replCommands ]
-  vars <- Env.keys <$> getReplBinds
-  return (filter (isPrefixOf n) (cmds <> (pretty <$> vars)))
+  binds <- Env.keys <$> getReplBinds
+  return (filter (isPrefixOf n) (cmds <> (Text.unpack . pretty <$> binds)))
 
 ----------------------------------------
 -- | Top level
 ----------------------------------------
 
 launchRepl :: Maybe FilePath -> IO ()
-launchRepl input = shell $ do
+launchRepl input =
+  flip evalStateT initState $ evalRepl
+    (pure "flimsy> ")
+    (evalCmd . Text.pack)
+    replCommands
+    (Just ':')
+    (Word completer `Combine` File)
+    (initRepl (Text.pack <$> input))
+
+initRepl :: Maybe File -> Repl ()
+initRepl input = do
   printBanner
   processFile False prelude
   case input of
     Nothing   -> return ()
     Just file -> processFile True file
 
-shell :: Repl a -> IO ()
-shell pre =
-  flip evalStateT initState $
-    evalRepl
-      (pure "flimsy> ")
-      evalCmd
-      replCommands
-      (Just ':')
-      (Word completer `Combine` File)
-      pre
+replCommands :: [(String, [String] -> Repl ())]
+replCommands =
+  fmap (\(s,f) -> (s, f . fmap Text.pack))
+  [ ("load"   , loadCmd)
+  , ("reload" , reloadCmd)
+  , ("browse" , browseCmd)
+  , ("type"   , typeCmd)
+  , ("shell"  , shellCmd)
+  , ("!"      , shellCmd)
+  , ("info"   , infoCmd)
+  , ("edit"   , editCmd)
+  , ("echo"   , echoCmd)
+  , ("quit"   , quitCmd)
+  ]
 
 printBanner :: Repl ()
 printBanner = say $
-  intercalate "\n"
-  [ "  __ _ _                      "
-  , " / _| (_)_ __ ___  ___ _   _  "
-  , "| |_| | | '_ ` _ \\/ __| | | | "
-  , "|  _| | | | | | | \\__ \\ |_| | "
-  , "|_| |_|_|_| |_| |_|___/\\__, | "
-  , "                       |___/  "
-  , ""
-  , "Welcome! flimsy REPL version 0.1.0.0"
+  Text.intercalate "\n"
+  [ ""
+  , "  .o88o. oooo   o8o                                        "
+  , "  888 `\" `888   `\"'                                        "
+  , " o888oo   888  oooo  ooo. .oo.  .oo.    .oooo.o oooo    ooo"
+  , "  888     888  `888  `888P\"Y88bP\"Y88b  d88(  \"8  `88.  .8' "
+  , "  888     888   888   888   888   888  `\"Y88b.    `88..8'  "
+  , "  888     888   888   888   888   888  o.  )88b    `888'   "
+  , " o888o   o888o o888o o888o o888o o888o 8\"\"888P'     .8'    "
+  , "                                                .o..P'     "
+  , "                                                `Y8P'      "
+  , "The brittle flimsy REPL, version 0.1.0.0"
   ]

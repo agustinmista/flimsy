@@ -8,7 +8,7 @@ module Pretty
 import Prelude hiding ((<>))
 import Text.Parsec (ParseError)
 import Text.PrettyPrint
-import Data.Text.Lazy (unpack)
+import Data.Text.Lazy (Text,pack,unpack)
 
 import Var
 import Syntax
@@ -21,8 +21,8 @@ import Error
 ----------------------------------------
 
 -- | Main pretty printing function
-pretty :: Pretty a => a -> String
-pretty = renderStyle (Style PageMode 100 1.5) . pp
+pretty :: Pretty a => a -> Text
+pretty = pack . renderStyle (Style PageMode 100 1.5) . pp
 
 -- | Type class for pretty printable types with an explicit level
 class Pretty p where
@@ -37,12 +37,12 @@ class Pretty p where
 ----------------------------------------
 
 instance Pretty Var where
-  ppr _ v = text (unpack (showVar v))
+  ppr _ v = text (unpack (varName v))
 
 instance Pretty (Var, Type) where
   ppr _ (v, t)
-    | isIOType t = text "\x1b[4m" <> text (unpack (showVar v)) <> text "\x1b[0m"
-    | otherwise  = text (unpack (showVar v))
+    | isIOType t = text "\x1b[4m" <> text (unpack (varName v)) <> text "\x1b[0m"
+    | otherwise  = text (unpack (varName v))
 
 
 ----------------------------------------
@@ -228,7 +228,7 @@ instance Pretty Type where
 ----------------------------------------
 
 instance Pretty TVar where
-  ppr _ v = text (showTVar v)
+  ppr _ v = text (unpack (tVarName v))
 
 instance Pretty Scheme where
   ppr _ (Forall [] t) =
@@ -325,11 +325,11 @@ instance Pretty Value where
       ppTail (ConsV h t) = text "," <> pp h <> ppTail t
       ppTail v = text "|" <> pp v
   ppr _ (IOV {}) =
-    text "<<IO>>"
+    text "<IO>"
   ppr _ (ClosureV {}) =
-    text "<<closure>>"
-  ppr _ (SuspendedV {}) =
-    text "<<thunk>>"
+    text "<closure>"
+  ppr _ (ThunkV {}) =
+    text "<thunk>"
 
 ----------------------------------------
 -- | Auxiliary functions

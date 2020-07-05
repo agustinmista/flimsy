@@ -18,6 +18,12 @@ import Error
 -- | Dependency analysis
 ----------------------------------------
 
+calculateSSCs :: TcEnv -> [PsDecl] -> [SCC (PsDecl, Var, [Var])]
+calculateSSCs env decls = stronglyConnCompR (node envVars <$> decls)
+  where
+    envVars = Set.fromList (Env.keys env)
+
+
 tryTopSort :: TcEnv -> [PsDecl] -> Either EscapeError [PsDecl]
 tryTopSort env decls = foldSCCs sccs
   where
@@ -25,13 +31,9 @@ tryTopSort env decls = foldSCCs sccs
     sccs = stronglyConnComp (node envVars <$> decls)
     declVar (BindD bind) = let (_,v,_) = splitBind bind in v
 
-    foldSCCs [] =
-      Right []
-    foldSCCs (CyclicSCC vs : _) =
-      Left (CyclicDeclarations (declVar <$> vs))
-    foldSCCs (AcyclicSCC v : xs) = do
-      vs <- foldSCCs xs
-      return (v : vs)
+    foldSCCs []                  = Right []
+    foldSCCs (CyclicSCC vs : _)  = Left (CyclicDeclarations (declVar <$> vs))
+    foldSCCs (AcyclicSCC v : xs) = (v:) <$> foldSCCs xs
 
 node :: Set Var -> PsDecl -> (PsDecl, Var, [Var])
 node vs (BindD bind) = (BindD bind, var, Set.toList escaped)
@@ -72,11 +74,7 @@ escapedExpr expr = do
       ese2 <- local (Set.insert var) (escapedExpr e2)
       return (ese1 <> ese2)
     -- LitE
-    LitE (IntL _) -> return Set.empty
-    LitE (DoubleL _) -> return Set.empty
-    LitE (StringL _) -> return Set.empty
-    LitE (BoolL _) -> return Set.empty
-    LitE (CharL _) -> return Set.empty
+    LitE _ -> return Set.empty
     -- InfixE
     InfixE op e1 e2 -> do
       escapedExpr (AppE (AppE (VarE op) e1) e2)

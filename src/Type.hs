@@ -1,8 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Type where
 
-import Data.Text.Lazy (Text, pack, unpack)
-
 import Var
 
 ----------------------------------------
@@ -51,15 +49,6 @@ isIOType _       = False
 ----------------------------------------
 -- | Type schemes
 ----------------------------------------
-
-newtype TVar = TVar { unTVar :: Text }
-  deriving (Show, Eq, Ord)
-
-mkTVar :: String -> TVar
-mkTVar = TVar . pack
-
-showTVar :: TVar -> String
-showTVar = unpack . unTVar
 
 data Scheme = Forall [TVar] Type
   deriving (Show, Eq, Ord)

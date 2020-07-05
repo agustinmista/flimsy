@@ -1,39 +1,58 @@
-val pi = 3.14
-
-fun fst tup = case tup of (x,_) => x
-fun snd tup = case tup of (_,y) => y
-
+# Binding primitive operations
 fun (+) x y = flimsy_prim_int_add (x,y)
 fun (-) x y = flimsy_prim_int_sub (x,y)
 fun (*) x y = flimsy_prim_int_mul (x,y)
 fun (/) x y = flimsy_prim_int_div (x,y)
 
-val getline = flimsy_prim_io_getline ()
-fun putline x = flimsy_prim_io_putline x
+fun getLine   = flimsy_prim_io_getline ()
+fun putLine x = flimsy_prim_io_putline x
 fun return  x = flimsy_prim_io_return x
+
+fun (::) x xs = flimsy_prim_list_cons (x,xs)
 
 fun show x = flimsy_prim_show x
 
-fun print x = putline (show x)
-fun print_io io = do { x <- io; print x } 
+val pi = 3.14
 
-fun (:>) x xs = flimsy_prim_list_cons (x,xs)
+fun print x = putLine (show x)
+fun print_io io = do { x <- io; print x }
+
+
+fun fst tup = case tup of (x,_) => x
+fun snd tup = case tup of (_,y) => y
+
+val bottom = bottom
+
+fun map f l =
+  case l of
+  | []     => []
+  | [x|xs] => f x :: map f xs
+
+fun take n l =
+  case (n, l) of
+  | (0, _)      => []
+  | (_, [])     => []
+  | (n, [x|xs]) => x :: take (n - 1) xs
+
+fun zipWith f l1 l2 =
+  case (l1, l2) of
+  | ([], _)          => []
+  | (_, [])          => []
+  | ([x|xs], [y|ys]) => f x y :: zipWith f xs ys
+
+val main = do
+  { x <- putLine "foo"
+  ; y <- putLine "bar"
+  ; return (x, y)
+  }
 
 fun fact n =
   case n of
   | 0 => 1
   | n => n * fact (n - 1)
 
-val bottom = fix (fn x => x)
-
-fun take n l =
-  case (n, l) of
-  | (0, _)      => []
-  | (_, [])     => []
-  | (n, [x|xs]) => x :> take (n - 1) xs
-
-val main = do
-  { x <- putline "foo"
-  ; y <- putline "bar"
-  ; return (x, y)
-  }
+fun fib n =
+  case n of
+  | 0 => 1
+  | 1 => 1
+  | n => fib (n-1) + fib (n-2)

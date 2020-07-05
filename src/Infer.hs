@@ -18,6 +18,7 @@ import Type
 import Subst
 import Solve
 import Error
+import Util
 
 import Debug.Trace
 
@@ -323,7 +324,7 @@ closeOver = normalize . generalize Env.empty
 
 -- | Type variables supply
 letters :: [TVar]
-letters = mkTVar <$> names
+letters = mkTVar . pack <$> names
   where
     names =
       [ [v]
