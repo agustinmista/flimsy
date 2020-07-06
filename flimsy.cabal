@@ -43,13 +43,13 @@ executable flimsy
     FlexibleContexts
   build-depends:
     base >=4 && <5,
-    text,
     mtl,
     containers,
     parsec,
     pretty,
     repline == 0.3.0.0,
     exceptions,
+    directory,
     filepath,
     process,
     llvm-hs,

@@ -1,3 +1,77 @@
+:t snd
+snd
+main
+:l fl/Do.fl 
+:l fl/do.fl 
+:l fl/do.fl 
+:l fl/do.fl 
+:l fl/do.fl 
+:e Do.fl 
+:info
+:reload
+main
+:browse Do
+:l Do
+:cd fl
+:l Do
+:l Do.fl 
+:cd fl
+:l Do
+:l Do.fl 
+:l Do
+:! ls
+:l Do
+:l Do.fl 
+:cd fl
+:l Do.fl 
+:l Do.fl 
+:l Do.fl 
+:info
+:browse 
+:cd fl
+:l Do
+:cd fl
+:info
+:browse Do
+:browse do
+:browse do.fl 
+:l do.fl 
+:cd fl
+:! ls
+:! ls
+:! cd fl
+:! ls
+:cd fl
+putLine "foo"
+putLine
+:info
+:! ls
+:!ls
+:browse Prelude
+:l do
+:e fl/do.fl 
+:l do
+:e fl/do.fl 
+:l deps
+:e fl/deps.fl 
+:l deps
+ls
+:cd fl
+:cd fl
+:info
+:info
+:l lib/test.flasdasdasd
+:l lib/test.fl 
+ls
+:! cd lib/
+:info
+print_io (return 10)
+:browse lib/prelude.fl 
+:browse 
+:echo val foo = 1
+:echo foo
+take 10 nats
+val nats = 0 :: map (fn x => x + 1) nats 
 :l lib/deps.fl 
 :l lib/deps.fl 
 :e lib/deps.fl 
@@ -24,77 +98,3 @@ foo
 :t retunr
 return
 fact 10
-getLine 
-putLine "aaa"
-take 10 nats
-val nats = 0 :: map (fn x => x + 1) nats 
-take 10 nats
-getLine
-putLine "aaa"
-putLine "aaa"
-main
-:t main
-main
-print "aaa"
-print "aaa"
-print "" 
-print ""foo""
-print "foo"
-print (return 10)
-main
-main
-print (return 10)
-print_io (return 10)
-return 10
-print_io (return 10)
-return 10
-print (return 10)
-main
-main
-main
-print_io (return 10)
-print_io (return 10)
-:t print_io 
-print_io (return 10)
-print (putLine  "10")
-print_io (putLine  "10")
-print (putLine  "10")
-putLine  "10"
-putStrLn "10"
-putStrLn "10"
-"foo"
-10
-10
-putLine "aaa"
-print_io (return ())
-putLine "aaa"
-print_io (return ())
-print_io (return ())
-print_io (return ())
-print ()
-print "1,2,3"
-print_io (putLine "aaa")
-print_io (putLine "aaa")
-print_io (putLine "aaa")
-print_io (putLine  "aaa")
-putLine  "aaa"
-putline "aaa"
-:t fn io => print_io io 
-:t fun io => print_io io 
-:t print_io
-:type do { putLine "aaa" }
-:type  do { putLine "aaa" }
-:type   do { print_io (do { putLine "aaa" })}
-:echo do { print_io (do { putLine "aaa" })}
-do { print_io (do { putLine "aaa" })}
-:t do { print_io (do { putLine "aaa" })}
-:t do { putLine "aaa" }
-do { putLine "aaa" }
-10
-10
-do { putLine "aaa" }
-putLine "aaa"
-:t (.)
-:t .
-fun (.) f g = fn x => f (g x)  
-main

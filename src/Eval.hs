@@ -39,7 +39,6 @@ data Value =
 instance Show Thunk where
   show _ = "<<thunk>>"
 
-
 instance Show (IO Value) where
   show _ = "<<io value>>"
 
@@ -109,7 +108,7 @@ lookupThunkOf :: Var -> EvalEnv -> Eval (IORef Thunk)
 lookupThunkOf var venv = do
   case Env.lookup var venv of
     Just ref -> return ref
-    Nothing -> throwError (InternalEvalError ("missing thunk for: " <> varName var))
+    Nothing -> throwError (InternalEvalError ("missing thunk for: " <> var_name var))
 
 ----------------------------------------
 -- | Primitive operations
@@ -138,22 +137,22 @@ lookupPrim _ = return Nothing
 -- | Evaluation Monad
 ----------------------------------------
 
-type Eval = ReaderT PrimEnv (ExceptT EvalError IO)
+type Eval = ReaderT PrimEnv (ExceptT FlimsyError IO)
 
 type EvalEnv = Env (IORef Thunk)
 
 -- | Run the evaluation monad
-runEval :: PrimEnv -> Eval a -> IO (Either EvalError a)
+runEval :: PrimEnv -> Eval a -> IO (Either FlimsyError a)
 runEval penv m = runExceptT (flip runReaderT penv m)
 
 ----------------------------------------
 -- | Evaluating expressions
 ----------------------------------------
 
-evaluate :: EvalEnv -> PrimEnv -> TcExpr -> IO (Either EvalError Value)
+evaluate :: EvalEnv -> PrimEnv -> TcExpr -> IO (Either FlimsyError Value)
 evaluate venv penv expr = runEval penv (evalExpr venv expr)
 
--- evaluate':: EvalEnv -> PrimEnv -> TcExpr -> IO (Either EvalError Value)
+-- evaluate':: EvalEnv -> PrimEnv -> TcExpr -> IO (Either FlimsyError Value)
 -- evaluate' venv penv expr = runEval penv (evalExpr venv expr >>= whnf)
 
 evalExpr :: EvalEnv -> TcExpr -> Eval Value

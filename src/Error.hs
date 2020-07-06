@@ -1,39 +1,32 @@
 module Error where
 
-import Data.Text.Lazy (Text)
+import Text.Parsec.Error
 
 import Var
 import Syntax
 import Type
 
 ----------------------------------------
--- | Escape errors
+-- | Flimsy Errors
 ----------------------------------------
 
-data EscapeError =
-  CyclicDeclarations [Var]
-  deriving Show
-
-----------------------------------------
--- | Type inference errors
-----------------------------------------
-
-data TypeError =
-    InternalTcError     Text
-  | UnificationFail     Type Type
-  | InfiniteType        TVar Type
-  | UnboundVariable     Var
+data FlimsyError
+  -- Parsing errors
+  = ParseError ParseError
+  -- Escape errors
+  | CyclicDeclarations [Var]
+  -- Type inference errors
+  | InternalTcError String
+  | UnificationFail Type Type
+  | InfiniteType TVar Type
+  | UnboundVariable Var
   | UnificationMismatch [Type] [Type]
-  | NonLinearPattern    PsPat
-  | TypeError :@ PsExpr
-  deriving Show
-
-----------------------------------------
--- | Runtime errors
-----------------------------------------
-
-data EvalError =
-    InternalEvalError Text
-  | MarshallingError  Text
+  | NonLinearPattern PsPat
+  | FlimsyError :@ PsExpr
+  -- Runtime errors
+  | InternalEvalError String
+  | MarshallingError String
   | NonExhaustiveCase TcExpr
+  -- IO Errors
+  | FileDoesNotExist String
   deriving Show

@@ -18,7 +18,6 @@ import Type
 import Subst
 import Solve
 import Error
-import Util
 
 import Debug.Trace
 
@@ -29,12 +28,12 @@ debug msg = trace msg (return ())
 -- | Inference monad
 ----------------------------------------
 
-type Infer = ReaderT TcEnv (StateT InferState (Except TypeError))
+type Infer = ReaderT TcEnv (StateT InferState (Except FlimsyError))
 
 type TcEnv = Env Scheme
 
 -- | Run the inference monad
-runInfer :: TcEnv -> Infer a -> Either TypeError a
+runInfer :: TcEnv -> Infer a -> Either FlimsyError a
 runInfer env m = runExcept (flip evalStateT initInfer (runReaderT m env))
 
 -- | Inference state
@@ -65,7 +64,7 @@ instantiate (Forall as t) = do
   let s = fromList (zip as as')
   return (apply s t)
 
-instantiate' :: Scheme -> Either TypeError Type
+instantiate' :: Scheme -> Either FlimsyError Type
 instantiate' tsc = runInfer Env.empty (instantiate tsc)
 
 -- | Extend type environment
@@ -75,17 +74,28 @@ inExtEnv (var, tsc) m = do
   local scope m
 
 ----------------------------------------
+-- | Type checking full modules
+----------------------------------------
+
+-- typeCheckModule :: TcEnv -> PsModule -> Either FlimsyError (TcModule, [TcBind])
+-- typeCheckModule env mod = do
+--   let vars = Env.keys env
+--   let decls = module_decls mod
+--   let decl = concatMap (\(BindD bind) -> let (_, var, _) = splitBind bind in [var]) decls
+
+
+----------------------------------------
 -- | Inferring type of expressions
 ----------------------------------------
 
-typeCheck :: TcEnv -> PsExpr -> Either TypeError (Scheme, TcExpr)
-typeCheck env expr = do
+typeCheckExpr :: TcEnv -> PsExpr -> Either FlimsyError (Scheme, TcExpr)
+typeCheckExpr env expr = do
   (ty, cs, expr') <- runInfer env (inferExpr expr)
   case runSolve cs of
     Left err -> throwError (err :@ expr)
     Right subst -> return (closeOver (apply subst ty), fmap (apply subst) <$> expr')
 
-constraintsOfExpr :: TcEnv -> PsExpr -> Either TypeError ([Constraint], Subst, Type, Scheme)
+constraintsOfExpr :: TcEnv -> PsExpr -> Either FlimsyError ([Constraint], Subst, Type, Scheme)
 constraintsOfExpr env expr = do
   (ty, cs, _) <- runInfer env (inferExpr expr)
   case runSolve cs of
@@ -215,7 +225,7 @@ inferCaseAlt caseE te (Alt pat body) = do
 -- | Inferring type of patterns
 ----------------------------------------
 
--- typeOfPat :: Pat -> Either TypeError (Scheme, [Constraint], [(Var, Scheme)])
+-- typeOfPat :: Pat -> Either FlimsyError (Scheme, [Constraint], [(Var, Scheme)])
 -- typeOfPat pat = do
 --   (ty, cs, ins, _) <- runInfer Env.empty (inferPat pat)
 --   return (closeOver ty, cs, ins)
@@ -277,18 +287,6 @@ inferPat pat =
                  hdins <> concat hdinss <> tlins,
                  ListP (ConsP (hd':hds') (Just tl')))
 
--- patToExpr :: Pat -> Expr
--- patToExpr (LitP l) = LitE l
--- patToExpr (VarP v) = VarE False v
--- patToExpr WildP = VarE False (mkVar "_")
--- patToExpr (TupP ps) = TupE (patToExpr <$> ps)
--- patToExpr (SumP (Left p)) = SumE (Left (patToExpr p))
--- patToExpr (SumP (Right p)) = SumE (Right (patToExpr p))
--- patToExpr (ListP NilP) = ListE []
--- patToExpr (ListP (ConsP hds Nothing)) = ListE (patToExpr <$> hds)
--- patToExpr (ListP (ConsP hds (Just _))) = ListE ((patToExpr <$> hds)
---                                                 <> [VarE False (mkVar "...")])
-
 ----------------------------------------
 -- | Inferring do statements
 ----------------------------------------
@@ -324,15 +322,9 @@ closeOver = normalize . generalize Env.empty
 
 -- | Type variables supply
 letters :: [TVar]
-letters = mkTVar . pack <$> names
-  where
-    names =
-      [ [v]
-      | v <- ['a' .. 'z']] <>
-      [ c : show n
-      | c <- ['a' .. 'z']
-      , n <- [0 :: Int ..]
-      ]
+letters = mkTVar <$>
+  [ [v] | v <- ['a' .. 'z']] <>
+  [ c : show n | c <- ['a' .. 'z'], n <- [0 :: Int ..]]
 
 generalize :: TcEnv -> Type -> Scheme
 generalize env t = Forall as t
@@ -344,13 +336,6 @@ normalize (Forall _ body) =
   Forall (snd <$> ord) (normtype body)
   where
     ord = zip (toList (ftv body)) letters
-
-    -- fv (VarT a)   = [a]
-    -- fv (ConT _)   = []
-    -- fv (a :->: b) = fv a <> fv b
-    -- fv (a :+: b)  = fv a <> fv b
-    -- fv (TupT ts)  = concatMap fv ts
-    -- fv (ListT t)  = fv t
 
     normtype (VarT a) =
       case lookup a ord of

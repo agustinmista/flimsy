@@ -2,13 +2,15 @@
 {-# LANGUAGE FlexibleContexts #-}
 module ReplState where
 
-import Data.IORef
+import System.FilePath
 import Control.Monad.State.Strict
 
-import Data.Set (Set)
-import qualified Data.Set as Set
+import Data.IORef
+import Data.Map (Map)
+import qualified Data.Map as Map
 
 import Var
+import Syntax
 import Env
 import Type
 import Infer
@@ -21,11 +23,15 @@ import Util
 -- | Some base files
 ----------------------------------------
 
-interactive :: File
+interactive :: FilePath
 interactive = "<interactive>"
 
-prelude :: File
-prelude = "lib/prelude.fl"
+preludePath :: FilePath
+preludePath = "lib/Prelude.fl"
+
+preludeName :: ModuleName
+preludeName = takeBaseName preludePath
+
 
 ----------------------------------------
 -- | Repl internal state
@@ -36,26 +42,28 @@ prelude = "lib/prelude.fl"
 data ReplBind = ReplBind
   { bind_thunk  :: IORef Thunk
   , bind_scheme :: Scheme
-  , bind_origin :: File
+  , bind_origin :: ModuleName
   }
 
 type BindEnv = Env ReplBind
 
 -- | Internal state
 
+type ModuleMap = Map ModuleName PsModule
+
 data ReplState = ReplState
   { repl_binds   :: BindEnv
   , repl_prims   :: PrimEnv
-  , repl_loaded  :: Set File
-  , repl_current :: Maybe Text
-  , repl_editor  :: File
+  , repl_loaded  :: ModuleMap
+  , repl_current :: Maybe PsModule
+  , repl_editor  :: FilePath
   }
 
 initState :: ReplState
 initState = ReplState
   { repl_binds   = Env.empty
   , repl_prims   = Prim.primitives
-  , repl_loaded  = Set.empty
+  , repl_loaded  = Map.empty
   , repl_current = Nothing
   , repl_editor  = "vim"
   }
@@ -73,13 +81,13 @@ getReplBinds = gets repl_binds
 getPrimEnv :: MonadState ReplState m => m PrimEnv
 getPrimEnv = gets repl_prims
 
-getLoadedFiles :: MonadState ReplState m => m (Set File)
-getLoadedFiles = gets repl_loaded
+getLoadedModules :: MonadState ReplState m => m (ModuleMap)
+getLoadedModules = gets repl_loaded
 
-getCurrentFile :: MonadState ReplState m => m (Maybe File)
-getCurrentFile = gets repl_current
+getCurrentModule :: MonadState ReplState m => m (Maybe PsModule)
+getCurrentModule = gets repl_current
 
-getEditor :: MonadState ReplState m => m File
+getEditor :: MonadState ReplState m => m FilePath
 getEditor = gets repl_editor
 
 -- | Project the internal state into the type checking environment
@@ -97,13 +105,13 @@ getEvalEnv = fmap bind_thunk <$> gets repl_binds
 -- | ReplState setters
 ----------------------------------------
 
-setLoadedFiles :: MonadState ReplState m => Set File -> m ()
-setLoadedFiles files = modify' $ \st -> st { repl_loaded = files }
+setLoadedModules :: MonadState ReplState m => ModuleMap -> m ()
+setLoadedModules mods = modify' $ \st -> st { repl_loaded = mods }
 
-setCurrentFile :: MonadState ReplState m => File -> m ()
-setCurrentFile f = modify' $ \st -> st { repl_current = Just f }
+setCurrentModule :: MonadState ReplState m => PsModule -> m ()
+setCurrentModule m = modify' $ \st -> st { repl_current = Just m }
 
-setEditor :: MonadState ReplState m => File -> m ()
+setEditor :: MonadState ReplState m => FilePath -> m ()
 setEditor e = modify' $ \st -> st { repl_editor = e }
 
 ----------------------------------------
@@ -111,17 +119,17 @@ setEditor e = modify' $ \st -> st { repl_editor = e }
 ----------------------------------------
 
 -- | Store/update a bind in the internal state
-registerBind :: (MonadIO m, MonadState ReplState m) => Var -> Thunk -> Scheme -> File -> m ()
-registerBind var th tsc file = do
+registerBind :: (MonadIO m, MonadState ReplState m) => Var -> Thunk -> Scheme -> ModuleName -> m ()
+registerBind var th tsc m = do
   st <- getReplState
   case Env.lookup var (repl_binds st) of
     Nothing -> do
       ref <- liftIO $ newIORef th
-      let st' = st { repl_binds = repl_binds st `Env.extend` (var, ReplBind ref tsc file) }
+      let st' = st { repl_binds = repl_binds st `Env.extend` (var, ReplBind ref tsc m) }
       put st'
     Just bind -> do
       say $ "Shadowing " <> pretty var
-      let st' = st { repl_binds = repl_binds st `Env.extend` (var, ReplBind (bind_thunk bind) tsc file) }
+      let st' = st { repl_binds = repl_binds st `Env.extend` (var, ReplBind (bind_thunk bind) tsc m) }
       liftIO $ writeIORef (bind_thunk bind) th
       put st'
 
@@ -131,25 +139,24 @@ unloadInteractive = modify' $ \st ->
   st { repl_binds = Env.filter ((interactive /=) . bind_origin) (repl_binds st) }
 
 -- | Remove all the binds created inside the REPL
-unloadBindsOfFile :: MonadState ReplState m => File -> m ()
-unloadBindsOfFile file = modify' $ \st ->
-  st { repl_binds = Env.filter ((file /=) . bind_origin) (repl_binds st) }
+unloadBindsOfModule :: MonadState ReplState m => ModuleName -> m ()
+unloadBindsOfModule m = modify' $ \st ->
+  st { repl_binds = Env.filter ((m /=) . bind_origin) (repl_binds st) }
 
--- | Unload all the files except for the prelude
-unloadAllFiles :: MonadState ReplState m => m ()
-unloadAllFiles = do
-  let keep = [prelude]
+-- | Unload all the modules except for the prelude
+unloadAllModules :: MonadState ReplState m => m ()
+unloadAllModules = do
+  let keep = [preludeName]
   modify' $ \st ->
     st { repl_binds = Env.filter (\b -> bind_origin b `elem` keep) (repl_binds st)
-       , repl_loaded = Set.filter (\f -> f `elem` keep) (repl_loaded st)
+       , repl_loaded = Map.filter (\f -> module_name f `elem` keep) (repl_loaded st)
        }
 
-
 ----------------------------------------
--- | Operations over loaded files
+-- | Operations over loaded modules
 ----------------------------------------
 
-registerLoadedFile :: MonadState ReplState m => File -> m (Set File)
-registerLoadedFile file = state $ \st ->
-  let loaded = Set.insert file (repl_loaded st)
-  in (loaded, st { repl_loaded = loaded })
+registerLoadedModule :: MonadState ReplState m => PsModule -> m [ModuleName]
+registerLoadedModule m = state $ \st ->
+  let loaded = Map.insert (module_name m) m (repl_loaded st)
+  in (Map.keys loaded, st { repl_loaded = loaded })

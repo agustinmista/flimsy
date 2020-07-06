@@ -7,39 +7,32 @@ import Data.Graph
 import Data.Set (Set)
 import qualified Data.Set as Set
 
-import qualified Env as Env
-
 import Var
 import Syntax
-import Infer
 import Error
 
 ----------------------------------------
 -- | Dependency analysis
 ----------------------------------------
 
-calculateSSCs :: TcEnv -> [PsDecl] -> [SCC (PsDecl, Var, [Var])]
-calculateSSCs env decls = stronglyConnCompR (node envVars <$> decls)
-  where
-    envVars = Set.fromList (Env.keys env)
+calculateSSCs :: [Var] -> [PsDecl] -> [SCC (PsDecl, Var, [Var])]
+calculateSSCs vars decls = stronglyConnCompR (node vars <$> decls)
 
-
-tryTopSort :: TcEnv -> [PsDecl] -> Either EscapeError [PsDecl]
-tryTopSort env decls = foldSCCs sccs
+tryTopSort :: [Var] -> [PsDecl] -> Either FlimsyError [PsDecl]
+tryTopSort vars decls = foldSCCs sccs
   where
-    envVars = Set.fromList (Env.keys env)
-    sccs = stronglyConnComp (node envVars <$> decls)
+    sccs = stronglyConnComp (node vars <$> decls)
     declVar (BindD bind) = let (_,v,_) = splitBind bind in v
 
     foldSCCs []                  = Right []
     foldSCCs (CyclicSCC vs : _)  = Left (CyclicDeclarations (declVar <$> vs))
     foldSCCs (AcyclicSCC v : xs) = (v:) <$> foldSCCs xs
 
-node :: Set Var -> PsDecl -> (PsDecl, Var, [Var])
+node :: [Var] -> PsDecl -> (PsDecl, Var, [Var])
 node vs (BindD bind) = (BindD bind, var, Set.toList escaped)
   where
     (_,var, expr) = splitBind bind
-    escaped = escapedVars vs expr
+    escaped = escapedVars (Set.fromList vs) expr
 
 ----------------------------------------
 -- | Escape analysis
@@ -110,9 +103,8 @@ escapedExpr expr = do
       escapedDo stmts
 
 escapedAlt :: PsAlt -> Scope (Set Var)
-escapedAlt (Alt pat body) = local (Set.fromList pv <>) (escapedExpr body)
-  where
-    pv = patVars pat
+escapedAlt (Alt pat body) =
+  local (Set.fromList (patVars pat) <>) (escapedExpr body)
 
 escapedDo :: [PsDoStmt] -> Scope (Set Var)
 escapedDo [] = return Set.empty

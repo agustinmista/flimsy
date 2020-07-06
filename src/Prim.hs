@@ -1,10 +1,8 @@
 {-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE OverloadedStrings #-}
 module Prim
   ( primitives
   ) where
 
-import qualified Data.Text.Lazy.IO as Text
 import Control.Monad.Except
 
 import qualified Env as Env
@@ -15,9 +13,8 @@ import Syntax
 import Parser
 import Eval
 import Error
-import Util
 
-boot :: File
+boot :: FilePath
 boot = "<boot>"
 
 ----------------------------------------
@@ -46,7 +43,7 @@ primitives = Env.fromList
 -- | Builders
 ----------------------------------------
 
-prim :: Text -> Text -> (Value -> Eval Value) -> (Var, Prim)
+prim :: String -> String -> (Value -> Eval Value) -> (Var, Prim)
 prim name tystr body = (mkVar name, Prim (closeOver ty) (PrimRunner body))
   where Right ty = parseType boot tystr
 
@@ -56,14 +53,11 @@ pattern Int n = LitV (IntL n)
 -- pattern Bool :: Bool -> Value
 -- pattern Bool b = LitV (BoolL b)
 
-pattern String :: Text -> Value
+pattern String :: String -> Value
 pattern String s = LitV (StringL s)
 
 pattern (:*:) :: Value -> Value -> Value
 pattern (:*:) x y = TupV [x, y]
-
-showText :: Show a => a -> Text
-showText = pack . show
 
 ----------------------------------------
 -- | Builders
@@ -79,22 +73,21 @@ flimsy_prim_int_binop _ _ =
 
 flimsy_prim_io_getline :: Value -> Eval Value
 flimsy_prim_io_getline (TupV []) = return $ IOV $ do
-  l <- Text.getLine
+  l <- getLine
   return (LitV (StringL l))
 flimsy_prim_io_getline _ =
   throwError (MarshallingError "flimsy_prim_io_getline")
 
-
 flimsy_prim_io_putstr :: Value -> Eval Value
 flimsy_prim_io_putstr (LitV (StringL l)) = return $ IOV $ do
-  Text.putStr l
+  putStr l
   return (TupV [])
 flimsy_prim_io_putstr _ =
   throwError (MarshallingError "flimsy_prim_io_putstr")
 
 flimsy_prim_io_putline :: Value -> Eval Value
 flimsy_prim_io_putline (LitV (StringL l)) = return $ IOV $ do
-  Text.putStrLn l
+  putStrLn l
   return (TupV [])
 flimsy_prim_io_putline _ =
   throwError (MarshallingError "flimsy_prim_io_putline")
@@ -113,19 +106,19 @@ flimsy_prim_show :: Value -> Eval Value
 flimsy_prim_show val = do
   case val of
     LitV (IntL n) -> do
-      return (String (showText n))
+      return (String (show n))
     LitV (DoubleL n) -> do
-      return (String (showText n))
+      return (String (show n))
     LitV (StringL s) -> do
-      return (String (showText s))
+      return (String (show s))
     LitV (BoolL True) -> do
       return (String "true")
     LitV (BoolL False) -> do
       return (String "false")
     LitV (CharL c) -> do
-      return (String (showText c))
+      return (String (show c))
     ConV c -> do
-      return (String (showText c))
+      return (String (show c))
     TupV [] -> do
       return (String "()")
     TupV (v:vs) -> do

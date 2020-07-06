@@ -6,7 +6,8 @@
   '(?#)
 
   ;; Keywords
-  '("fun" "val" "infix" "infixl" "infixr"
+  '("module" "imports" "exports"
+    "fun" "val" "infix" "infixl" "infixr"
     "let" "in" "if" "then" "else"
     "case" "of" "end"
     "fn" "left" "right"
@@ -14,7 +15,6 @@
 
   ;; Extra expressions
   '(
-
     ;; functions an val names after fun, val and sig keywords
     ("[ \t]*\\(fun\\|val\\)\\>[ \t]*\\([a-zA-Z][a-zA-Z0-9_']*\\)?"
      (1 font-lock-keyword-face)

@@ -12,13 +12,13 @@ import Error
 ----------------------------------------
 
 -- | Constraint solver monad
-type Solve = Except TypeError
+type Solve = Except FlimsyError
 
 -- | Type constraints
 type Constraint = (Type, Type)
 
 -- | Run the constraint solver
-runSolve :: [Constraint] -> Either TypeError Subst
+runSolve :: [Constraint] -> Either FlimsyError Subst
 runSolve cs = runExcept (solver (mempty, cs))
 
 -- Unification solver

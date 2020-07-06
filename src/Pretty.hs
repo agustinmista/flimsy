@@ -6,9 +6,8 @@ module Pretty
   ) where
 
 import Prelude hiding ((<>))
-import Text.Parsec (ParseError)
+
 import Text.PrettyPrint
-import Data.Text.Lazy (Text,pack,unpack)
 
 import Var
 import Syntax
@@ -21,8 +20,8 @@ import Error
 ----------------------------------------
 
 -- | Main pretty printing function
-pretty :: Pretty a => a -> Text
-pretty = pack . renderStyle (Style PageMode 100 1.5) . pp
+pretty :: Pretty a => a -> String
+pretty = renderStyle (Style PageMode 100 1.5) . pp
 
 -- | Type class for pretty printable types with an explicit level
 class Pretty p where
@@ -37,12 +36,12 @@ class Pretty p where
 ----------------------------------------
 
 instance Pretty Var where
-  ppr _ v = text (unpack (varName v))
+  ppr _ v = text (var_name v)
 
 instance Pretty (Var, Type) where
   ppr _ (v, t)
-    | isIOType t = text "\x1b[4m" <> text (unpack (varName v)) <> text "\x1b[0m"
-    | otherwise  = text (unpack (varName v))
+    | isIOType t = text "\x1b[4m" <> text (var_name v) <> text "\x1b[0m"
+    | otherwise  = text (var_name v)
 
 
 ----------------------------------------
@@ -228,7 +227,7 @@ instance Pretty Type where
 ----------------------------------------
 
 instance Pretty TVar where
-  ppr _ v = text (unpack (tVarName v))
+  ppr _ v = text (tvar_name v)
 
 instance Pretty Scheme where
   ppr _ (Forall [] t) =
@@ -240,18 +239,14 @@ instance Pretty Scheme where
 -- | Errors
 ----------------------------------------
 
-instance Pretty ParseError where
-  ppr _ s =
+instance Pretty FlimsyError where
+  ppr _ (ParseError s) =
     text "parse error!"
     $+$ text (show s)
-
-instance Pretty EscapeError where
   ppr _ (CyclicDeclarations vs) =
     text "dependency error!"
     $+$ text "declarations form a cycle:"
     $+$ hsep (punctuate (text " ->") (pp <$> (last vs : vs)))
-
-instance Pretty TypeError where
   ppr _ (UnificationFail t1 t2) =
     text "type error!"
     $+$ text "could not match expected type:"
@@ -276,25 +271,26 @@ instance Pretty TypeError where
     $+$ text "  " <+> pp pat
   ppr _ (InternalTcError msg) =
     text "type error!"
-    $+$ text (unpack msg)
+    $+$ text msg
   ppr _ (err :@ expr) =
     pp err
     $+$ text "in the expression:"
     $+$ text "  " <+> pp expr
-
-instance Pretty EvalError where
   ppr _ (InternalEvalError msg) =
     text "runtime error!"
-    $+$ text (unpack msg)
+    $+$ text msg
   ppr _ (MarshallingError ident) =
     text "runtime error!"
     $+$ text "bad marshalling of primitive:"
-    $+$ text (unpack ident)
+    $+$ text ident
   ppr _ (NonExhaustiveCase expr) =
     text "runtime error!"
     $+$ text "non-exhaustive patterns in case"
     $+$ text "in the expression:"
     $+$ text "  " <+> pp expr
+  ppr _ (FileDoesNotExist path) =
+    text "IO error!"
+    $+$ text "file" <+> text path <+> text "does not exist"
 
 ----------------------------------------
 -- | Values

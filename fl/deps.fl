@@ -1,3 +1,5 @@
+module Deps
+
 
 val c = a
 

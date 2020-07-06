@@ -1,8 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 module Lexer where
 
-import Data.Text.Lazy
-
 import Data.Functor
 import Data.Functor.Identity
 
@@ -14,7 +12,8 @@ langDef = LanguageDef
   { reservedOpNames =
       [ ":", ",", "->", "=>", "|", "=", "_", "[", "]"]
   , reservedNames =
-      [ "val", "fun", "sig"
+      [ "module", "imports", "where"
+      , "val", "fun", "sig"
       , "infix", "infixl", "infixr"
       , "let", "in"
       , "if", "then", "else"
@@ -35,23 +34,23 @@ langDef = LanguageDef
   }
 
 -- | The main lexer for the language
-lexer :: GenTokenParser Text () Identity
+lexer :: GenTokenParser String () Identity
 lexer = makeTokenParser langDef
 
 -- | A particular lexer for type identifiers
-lexerT :: GenTokenParser Text () Identity
-lexerT = makeTokenParser langDef { identStart = upper }
+lexerU :: GenTokenParser String () Identity
+lexerU = makeTokenParser langDef { identStart = upper }
 
 prefix s f = Prefix (reservedOp lexer s >> return f)
 binary s f = Infix (reservedOp lexer s >> return f)
 contents p = Token.whiteSpace lexer *> p <* eof
 
-identifier  = pack <$> Token.identifier lexer
-identifierT = pack <$> Token.identifier lexerT
-operator    = pack <$> Token.operator lexer
+identifier  = Token.identifier lexer
+identifierU = Token.identifier lexerU
+operator    = Token.operator lexer
 
 numberLit  = Token.naturalOrFloat lexer
-stringLit  = pack <$> Token.stringLiteral lexer
+stringLit  = Token.stringLiteral lexer
 charLit    = Token.charLiteral lexer
 decimalLit = Token.decimal lexer
 
@@ -64,7 +63,6 @@ commaSep1  = Token.commaSep1 lexer
 reserved   = Token.reserved lexer
 symbol     = Token.symbol lexer
 
-
 pipe_    = void (Token.symbol lexer "|")
 darrow_  = void (Token.symbol lexer "=>")
 arrow_   = void (Token.symbol lexer "->")
@@ -72,15 +70,17 @@ doarrow_ = void (Token.symbol lexer "<-")
 equal_   = void (Token.symbol lexer "=")
 wild_    = void (Token.symbol lexer "_")
 plus_    = void (Token.symbol lexer "+")
--- minus_   = Token.reserved lexer "-"
 
 colon_   = void (Token.colon lexer)
 dot_     = void (Token.dot lexer)
 comma_   = void (Token.comma lexer)
 semi_    = void (Token.semi lexer)
-
 lbrack_  = Token.reserved lexer "["
 rbrack_  = Token.reserved lexer "]"
+
+module_  = Token.reserved lexer "module"
+imports_ = Token.reserved lexer "imports"
+exports_ = Token.reserved lexer "exports"
 val_     = Token.reserved lexer "val"
 fun_     = Token.reserved lexer "fun"
 sig_     = Token.reserved lexer "sig"

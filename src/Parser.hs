@@ -5,53 +5,105 @@ module Parser
   , parseDecl
   , parseStdin
   , parseSourceFile
+  , parseModule
   ) where
+
+import System.FilePath
 
 import Control.Monad
 
 import Data.Functor
 
-
 import Text.Parsec
-import Text.Parsec.Text.Lazy
+import Text.Parsec.String
 
 import Lexer
 import Var
 import Syntax
 import Type hiding (ioT)
-import Util
+import Error
 
 ----------------------------------------
 -- | Parsing functions
 ----------------------------------------
 
 -- | Parse the interactive input, either expression or declaration
-parseStdin :: File -> Text -> Either ParseError (Either PsExpr PsDecl)
+parseStdin :: FilePath -> String -> Either FlimsyError (Either PsExpr PsDecl)
 parseStdin = mkParser stdin
 
--- | Parse all top level binds in a source file
-parseSourceFile :: File -> Text -> Either ParseError [PsDecl]
+-- | Parse a module with its header attached
+parseModule :: FilePath -> String -> Either FlimsyError PsModule
+parseModule file = mkParser (module' file) file
+
+-- | Parse all top level declarations in a source file
+parseSourceFile :: FilePath -> String -> Either FlimsyError [PsDecl]
 parseSourceFile = mkParser (many decl)
 
 -- | Parse a single expression
-parseExpr :: File -> Text -> Either ParseError PsExpr
+parseExpr :: FilePath -> String -> Either FlimsyError PsExpr
 parseExpr = mkParser expr
 
 -- | Parse a type
-parseType :: File -> Text -> Either ParseError Type
+parseType :: FilePath -> String -> Either FlimsyError Type
 parseType = mkParser type'
 
 -- | Parse a expression bind
-parseBind :: File -> Text -> Either ParseError PsBind
+parseBind :: FilePath -> String -> Either FlimsyError PsBind
 parseBind = mkParser bind
 
 -- | Parse a top level declaration
-parseDecl :: File -> Text -> Either ParseError PsDecl
+parseDecl :: FilePath -> String -> Either FlimsyError PsDecl
 parseDecl = mkParser decl
 
 -- | Build a top-level parser
-mkParser :: Parser a -> File -> Text -> Either ParseError a
-mkParser parser = parse (contents parser) . toFilePath
+mkParser :: Parser a -> FilePath -> String -> Either FlimsyError a
+mkParser parser path input =
+  case parse (contents parser) path input of
+    Left err -> Left (ParseError err)
+    Right a -> Right a
+
+----------------------------------------
+-- | Modules
+----------------------------------------
+
+module' :: FilePath -> Parser PsModule
+module' file = do
+  (name, imps, exps) <- header file
+  decls <- many decl
+  return Module
+    { module_name = name
+    , module_path = file
+    , module_imports = imps
+    , module_exports = exps
+    , module_decls = decls
+    }
+
+header :: FilePath -> Parser (String, [ModuleName], Maybe [Var])
+header file = do
+  module_
+  name <- identifierU
+  when (takeBaseName file /= name) $ do
+    unexpected "module name mismatch"
+  imports <- optionMaybe (imports_ >> parens (identifierU `sepBy1` comma_))
+  exports <- optionMaybe (exports_ >> parens (varOrInfixOp `sepBy1` comma_))
+  return (name, maybe [] id imports, exports)
+
+----------------------------------------
+-- | Variables
+----------------------------------------
+
+var :: Parser Var
+var = mkVar <$> identifier
+
+varOrInfixOp :: Parser Var
+varOrInfixOp = try infixOp <|> var
+
+infixOp :: Parser Var
+infixOp = mkVar <$> parens operator
+  <?> "infix operator"
+
+con :: Parser Var
+con = mkVar <$> identifierU
 
 ----------------------------------------
 -- | Stdin (either expression or declaration)
@@ -74,25 +126,12 @@ bindD :: Parser PsDecl
 bindD = BindD <$> bind
 
 ----------------------------------------
--- | Variables
-----------------------------------------
-
-var :: Parser Var
-var = Var <$> identifier
-
-varOrInfixOp :: Parser Var
-varOrInfixOp = Var <$> (try (parens operator) <|> identifier)
-
-con :: Parser Var
-con = Var <$> identifierT
-
-----------------------------------------
 -- | Binds
 ----------------------------------------
 
 bind :: Parser PsBind
 bind =
-  valB
+  try valB
   <|> try infixB
   <|> funB
   <?> "bind"
@@ -146,17 +185,16 @@ expr =
 
 -- | Infix operators
 infixE :: Parser PsExpr
-infixE =
-  infixOp
-  <?> "infix operator"
-
-infixOp :: Parser PsExpr
-infixOp = do
+infixE = do
   e1 <- try doE <|> appE
   op <- operator
   -- e2 <- appE
   e2 <- expr
   return (InfixE (mkVar op) e1 e2)
+  <?> "infix operator"
+
+-- infixOp :: Parser PsExpr
+-- infixOp = do
 
 -- | Applied expressions without type annotations
 appE :: Parser PsExpr

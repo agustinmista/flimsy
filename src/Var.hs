@@ -1,29 +1,30 @@
 module Var where
 
-import Data.Text.Lazy (Text)
-
 ----------------------------------------
 -- | Variables
 ----------------------------------------
 
-newtype Var = Var Text
-  deriving (Show, Eq, Ord)
+data Var = Var
+  { var_qual :: Maybe String
+  , var_name :: String
+  } deriving (Show, Eq, Ord)
 
-mkVar :: Text -> Var
-mkVar = Var
+mkVar :: String -> Var
+mkVar = Var Nothing
 
-varName :: Var -> Text
-varName (Var t) = t
+mkQualVar :: String -> String -> Var
+mkQualVar m v = Var (Just m) v
 
 ----------------------------------------
--- | Variables
+-- | Type Variables
 ----------------------------------------
 
-newtype TVar = TVar Text
-  deriving (Show, Eq, Ord)
+newtype TVar = TVar
+  { tvar_name :: String
+  } deriving (Show, Eq, Ord)
 
-mkTVar :: Text -> TVar
+mkTVar :: String -> TVar
 mkTVar = TVar
 
-tVarName :: TVar -> Text
+tVarName :: TVar -> String
 tVarName (TVar v) = v

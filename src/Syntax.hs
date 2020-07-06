@@ -1,12 +1,31 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Syntax where
 
-import Data.Text.Lazy (Text)
-
+import Data.Function
 import Data.List
 
 import Var
 import Type
+
+----------------------------------------
+-- | Modules
+----------------------------------------
+
+type ModuleName = String
+
+data Module a = Module
+  { module_name :: ModuleName
+  , module_path :: FilePath
+  , module_imports :: [ModuleName]
+  , module_exports :: Maybe [a]
+  , module_decls :: [Decl a]
+  } deriving (Show, Eq)
+
+instance Eq a => Ord (Module a) where
+  compare = compare `on` module_name
+
+type PsModule = Module Var
+type TcModule = Module (Var, Type)
 
 ----------------------------------------
 -- | Top level declarations
@@ -96,7 +115,7 @@ type TcExpr = Expr (Var, Type)
 data Literal =
     IntL Int
   | DoubleL Double
-  | StringL Text
+  | StringL String
   | BoolL Bool
   | CharL Char
   deriving (Show, Eq)
