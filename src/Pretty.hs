@@ -291,6 +291,9 @@ instance Pretty FlimsyError where
   ppr _ (FileDoesNotExist path) =
     text "IO error!"
     $+$ text "file" <+> text path <+> text "does not exist"
+  ppr _ (NotImplemented msg) =
+    text "Internal error!"
+    $+$ text "Not implemented:" <+> text msg
 
 ----------------------------------------
 -- | Values

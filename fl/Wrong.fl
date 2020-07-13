@@ -1,0 +1,9 @@
+module Wrong
+
+val x = w
+
+val y = (x, right x)
+
+val z = 1 + x
+
+val w = z + z

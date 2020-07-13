@@ -27,6 +27,7 @@ executable flimsy
     Parser
     Pretty
     Infer
+    TypeCheck
     Eval
     Repl
     ReplState

@@ -5,15 +5,11 @@ module Var where
 ----------------------------------------
 
 data Var = Var
-  { var_qual :: Maybe String
-  , var_name :: String
+  { var_name :: String
   } deriving (Show, Eq, Ord)
 
 mkVar :: String -> Var
-mkVar = Var Nothing
-
-mkQualVar :: String -> String -> Var
-mkQualVar m v = Var (Just m) v
+mkVar = Var
 
 ----------------------------------------
 -- | Type Variables

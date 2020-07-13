@@ -10,12 +10,14 @@ module Env
   , fromList
   , toList
   , filter
+  , restrict
   ) where
 
 import Prelude hiding (lookup, filter)
 
-import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 
 import Var
 
@@ -64,3 +66,6 @@ toList (Env env) = Map.toList env
 
 filter :: (a -> Bool) -> Env a -> Env a
 filter f (Env env) = Env (Map.filter f env)
+
+restrict :: [Var] -> Env a -> Env a
+restrict vs (Env env) = Env (Map.restrictKeys env (Set.fromList vs))

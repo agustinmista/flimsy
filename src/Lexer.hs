@@ -23,7 +23,7 @@ langDef = LanguageDef
       , "do", "IO"
       ]
   , identStart = lower
-  , identLetter = alphaNum <|> oneOf "_'"
+  , identLetter = alphaNum <|> oneOf "._'"
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^-~"
   , opStart = oneOf ":!#$%&*+./<=>?@\\^-~"
   , commentLine = "#"

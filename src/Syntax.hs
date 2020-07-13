@@ -16,8 +16,6 @@ type ModuleName = String
 data Module a = Module
   { module_name :: ModuleName
   , module_path :: FilePath
-  , module_imports :: [ModuleName]
-  , module_exports :: Maybe [a]
   , module_decls :: [Decl a]
   } deriving (Show, Eq)
 
@@ -68,6 +66,9 @@ mergeBind False name (FixE (LamE _ expr)) = FunB name args expr'
     collectLams (LamE v e) = let (vs, e') = collectLams e in (v:vs, e')
     collectLams e          = ([], e)
 mergeBind _ _ _ = error "mergeBind: impossible case"
+
+bindName :: Bind a -> a
+bindName bind = let (_, a, _) = splitBind bind in a
 
 ----------------------------------------
 -- | Expressions

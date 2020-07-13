@@ -29,4 +29,6 @@ data FlimsyError
   | NonExhaustiveCase TcExpr
   -- IO Errors
   | FileDoesNotExist String
+  -- Other errors
+  | NotImplemented String
   deriving Show

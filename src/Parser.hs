@@ -68,25 +68,16 @@ mkParser parser path input =
 
 module' :: FilePath -> Parser PsModule
 module' file = do
-  (name, imps, exps) <- header file
+  module_
+  name <- identifierU
+  when (takeBaseName file /= name) $
+    unexpected "module name mismatch"
   decls <- many decl
   return Module
     { module_name = name
     , module_path = file
-    , module_imports = imps
-    , module_exports = exps
     , module_decls = decls
     }
-
-header :: FilePath -> Parser (String, [ModuleName], Maybe [Var])
-header file = do
-  module_
-  name <- identifierU
-  when (takeBaseName file /= name) $ do
-    unexpected "module name mismatch"
-  imports <- optionMaybe (imports_ >> parens (identifierU `sepBy1` comma_))
-  exports <- optionMaybe (exports_ >> parens (varOrInfixOp `sepBy1` comma_))
-  return (name, maybe [] id imports, exports)
 
 ----------------------------------------
 -- | Variables
@@ -188,13 +179,9 @@ infixE :: Parser PsExpr
 infixE = do
   e1 <- try doE <|> appE
   op <- operator
-  -- e2 <- appE
   e2 <- expr
   return (InfixE (mkVar op) e1 e2)
   <?> "infix operator"
-
--- infixOp :: Parser PsExpr
--- infixOp = do
 
 -- | Applied expressions without type annotations
 appE :: Parser PsExpr

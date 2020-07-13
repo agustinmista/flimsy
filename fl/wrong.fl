@@ -1,7 +1,0 @@
-val x = 5
-
-val y = (x,right x)
-
-val z = 1 + w
-
-val w = true

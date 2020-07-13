@@ -1,5 +1,4 @@
 module Prelude
-exports (putLine)
 
 # Binding primitive operations
 fun (+) x y = flimsy_prim_int_add (x,y)

@@ -152,8 +152,10 @@ runEval penv m = runExceptT (flip runReaderT penv m)
 evaluate :: EvalEnv -> PrimEnv -> TcExpr -> IO (Either FlimsyError Value)
 evaluate venv penv expr = runEval penv (evalExpr venv expr)
 
--- evaluate':: EvalEnv -> PrimEnv -> TcExpr -> IO (Either FlimsyError Value)
--- evaluate' venv penv expr = runEval penv (evalExpr venv expr >>= whnf)
+evalExpr' :: IORef EvalEnv -> TcExpr -> Eval Value
+evalExpr' ref expr = do
+  env <- liftIO $ readIORef ref
+  evalExpr env expr
 
 evalExpr :: EvalEnv -> TcExpr -> Eval Value
 evalExpr env expr = do

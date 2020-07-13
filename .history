@@ -1,100 +1,100 @@
-:t snd
-snd
 main
+odd 30
+:browse OddEven
+:browse 
+:l fl/OddEven.fl 
+even 30
+even 30
+odd 30
+foo 
+bar
+:br OddEven
+:l fl/OddEven.fl 
+bar
+odd 10
+even 10
+foo
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+bar
+odd 30
+even 30
+:l fl/OddEven.fl 
+even 30
+odd 30
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+odd 10
+bar
+foo
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+bar
+:t bar
+:t even 
+:t :t even
+:t odd
+odd 2
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:l fl/OddEven.fl 
+:t main
+:browse Do
 :l fl/Do.fl 
-:l fl/do.fl 
-:l fl/do.fl 
-:l fl/do.fl 
-:l fl/do.fl 
-:e Do.fl 
-:info
-:reload
-main
-:browse Do
-:l Do
-:cd fl
-:l Do
-:l Do.fl 
-:cd fl
-:l Do
-:l Do.fl 
-:l Do
-:! ls
-:l Do
-:l Do.fl 
-:cd fl
-:l Do.fl 
-:l Do.fl 
-:l Do.fl 
-:info
-:browse 
-:cd fl
-:l Do
-:cd fl
-:info
-:browse Do
-:browse do
-:browse do.fl 
-:l do.fl 
-:cd fl
-:! ls
-:! ls
-:! cd fl
-:! ls
-:cd fl
-putLine "foo"
-putLine
-:info
-:! ls
-:!ls
-:browse Prelude
-:l do
-:e fl/do.fl 
-:l do
-:e fl/do.fl 
-:l deps
-:e fl/deps.fl 
-:l deps
-ls
-:cd fl
-:cd fl
-:info
-:info
-:l lib/test.flasdasdasd
-:l lib/test.fl 
-ls
-:! cd lib/
-:info
-print_io (return 10)
-:browse lib/prelude.fl 
-:browse 
-:echo val foo = 1
-:echo foo
+:browse A Prelude
+:browse A
+:l fl/B.fl 
+foo
+:l fl/A.fl 
 take 10 nats
 val nats = 0 :: map (fn x => x + 1) nats 
-:l lib/deps.fl 
-:l lib/deps.fl 
-:e lib/deps.fl 
-:e lib/deps.fl 
-:l lib/deps.fl 
-:l lib/wrong.fl 
-fib 30
-fib 30
-fib 20
-fib 100
-fib 10
-:l lib/prelude.fl 
-:l lib/do.fl 
-foo 10 20
-foo
-:browse lib/test.fl 
-:l lib/test.fl 
-:l
-:reload
-:! cat flimsy.cabal 
-:! ls
-:t return
-:t return
-:t retunr
-return
-fact 10
+:load fl/B.fl 
+:browse A
+:load fl/A.fl 
+:browse Prelude
+10
+nats
+val nats = 0 :: map (fn x => x + 1) nats 
+nats
+:echo take 10 nats
+take 10 nats
+take
+:t nats
+val nats = 0 :: map (fn x => x + 1) nats 
+putLine "aaa"
+10
+:browse Prelude
+:browse Prelude
+:browse Prelude
+:browse Prelude
+:browse Wrong
+:l fl/Wrong.fl 
+:browse Wrong
+:l fl/Wrong.fl 
+z
+:browse Wrong
+:l fl/Wrong.fl 
+:browse Wrong
+:l fl/Wrong.fl 
+snd (10, 20)
+putLine "aaa"
+:info
+:t fn x => x
+:t snd (10, 20)
+:t snd
+1
+take
+:browse 
+:browse 
+:browse 
+:info

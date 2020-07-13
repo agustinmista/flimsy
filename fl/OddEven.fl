@@ -1,0 +1,15 @@
+module OddEven
+
+val foo = 42
+val bar = odd foo
+
+fun odd n =
+  case n of
+  | 0 => false
+  | n' => even (n'-1)
+
+fun even n =
+  case n of
+  | 0 => true
+  | n' => odd (n'-1)
+

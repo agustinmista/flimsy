@@ -1,4 +1,7 @@
-module Escape where
+module Escape
+  ( module Escape
+  , SCC(..)
+  ) where
 
 import Control.Monad.Reader
 
@@ -15,24 +18,24 @@ import Error
 -- | Dependency analysis
 ----------------------------------------
 
-calculateSSCs :: [Var] -> [PsDecl] -> [SCC (PsDecl, Var, [Var])]
-calculateSSCs vars decls = stronglyConnCompR (node vars <$> decls)
+calculateSSCs :: [PsDecl] -> [SCC (PsDecl, Var, [Var])]
+calculateSSCs decls = stronglyConnCompR (node <$> decls)
 
-tryTopSort :: [Var] -> [PsDecl] -> Either FlimsyError [PsDecl]
-tryTopSort vars decls = foldSCCs sccs
+tryTopSort :: [PsDecl] -> Either FlimsyError [PsDecl]
+tryTopSort decls = foldSCCs sccs
   where
-    sccs = stronglyConnComp (node vars <$> decls)
+    sccs = stronglyConnComp (node <$> decls)
     declVar (BindD bind) = let (_,v,_) = splitBind bind in v
 
     foldSCCs []                  = Right []
     foldSCCs (CyclicSCC vs : _)  = Left (CyclicDeclarations (declVar <$> vs))
     foldSCCs (AcyclicSCC v : xs) = (v:) <$> foldSCCs xs
 
-node :: [Var] -> PsDecl -> (PsDecl, Var, [Var])
-node vs (BindD bind) = (BindD bind, var, Set.toList escaped)
+node :: PsDecl -> (PsDecl, Var, [Var])
+node (BindD bind) = (BindD bind, var, Set.toList escaped)
   where
-    (_,var, expr) = splitBind bind
-    escaped = escapedVars (Set.fromList vs) expr
+    (_, var, expr) = splitBind bind
+    escaped = escapedVars expr
 
 ----------------------------------------
 -- | Escape analysis
@@ -40,8 +43,8 @@ node vs (BindD bind) = (BindD bind, var, Set.toList escaped)
 
 type Scope = Reader (Set Var)
 
-escapedVars :: Set Var -> PsExpr -> Set Var
-escapedVars env expr = runReader (escapedExpr expr) env
+escapedVars :: PsExpr -> Set Var
+escapedVars expr = runReader (escapedExpr expr) Set.empty
 
 escapedExpr :: PsExpr -> Scope (Set Var)
 escapedExpr expr = do

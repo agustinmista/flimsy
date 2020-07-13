@@ -14,14 +14,14 @@ import Control.Monad.State.Strict
 import Control.Monad.Catch (catch)
 
 import Data.List
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 
 import Var
 import Parser
 import Syntax
 import Type
-import Escape
 import Infer
+import TypeCheck
 import Eval
 import Pretty
 import Error
@@ -42,11 +42,12 @@ hoist :: Either FlimsyError a -> Repl a
 hoist (Right val) = return val
 hoist (Left err) = say (pretty err) >> abort
 
+-- | Like `dontCrash`, but it doesn't print "Interrupt"
 continueAfterError :: Repl () -> Repl ()
 continueAfterError m = catch m (\SomeException {} -> return ())
 
 ----------------------------------------
--- | Processing inputs
+-- | Module processing
 ----------------------------------------
 
 readSourceFile :: FilePath -> IO (Either FlimsyError String)
@@ -56,60 +57,65 @@ readSourceFile path = do
     then Right <$> readFile path
     else return (Left (FileDoesNotExist path))
 
-processFile :: Bool -> ModuleName -> FilePath -> Repl ()
-processFile update modname path = do
-  unloadAllModules
+processModule :: Bool -> ModuleName -> FilePath -> Repl ()
+processModule update modname path = do
   say $ "Processing " <> modname <> " (" <> path <> ")"
+  unloadInteractive
+  unloadBindsOfModule modname
   -- parse the input file
   contents <- hoist =<< liftIO (readSourceFile path)
-  mod <- hoist (parseModule path contents)
+  psMod <- hoist (parseModule path contents)
   -- compute a topological sort of the declarations in the target file
-  tenv <- getTcEnv
-  let decls = module_decls mod
-  -- forM_ sccs (say . Text.pack . show)
-  sortedDecls <- hoist (tryTopSort (Env.keys tenv) decls)
-  -- process each declarations in the safe order computed above
-  mapM_ (processDecl (Just modname)) sortedDecls
+  tcEnv <- getBaseTcEnv
+  (tcMod, tcSCCs) <- hoist (typeCheckModule tcEnv psMod)
+  -- register the binds in the module in the interactive environment
+  mapM_ (registerSCC modname) tcSCCs
   -- add the file to the list of loaded ones
-  loaded <- registerLoadedModule mod
+  loaded <- registerLoadedModule tcMod
   -- set the input as current file and report the loaded files
-  when update (setCurrentModule mod)
+  when update (setCurrentModule tcMod)
   say $ "Ok, files loaded: " <> intercalate ", " loaded
 
-processDecl :: Maybe ModuleName -> PsDecl -> Repl ()
-processDecl mbm (BindD bind) = processBind mbm bind
 
-processBind :: Maybe ModuleName -> PsBind -> Repl ()
-processBind mbm bind = do
+----------------------------------------
+-- | Interactive evaluation
+----------------------------------------
+
+evalInteractiveDecl :: PsDecl -> Repl ()
+evalInteractiveDecl (BindD bind) = evalInteractiveBind bind
+
+evalInteractiveBind :: PsBind -> Repl ()
+evalInteractiveBind bind = do
   let (_,var, expr) = splitBind bind
   -- type check the body
-  tenv <- getTcEnv
+  tenv <- getInteractiveTcEnv
   (tsc, expr') <- hoist (typeCheckExpr tenv expr)
   -- create/update the evaluation thunk
-  venv <- getEvalEnv
-  let modname = maybe interactive id mbm
+  venv <- getInteractiveEvalEnv
   let th = mkThunk (evalExpr venv expr')
-  registerBind var th tsc modname
+  registerBind var th tsc interactive
 
-processExpr :: PsExpr -> Repl ()
-processExpr expr = do
+evalInteractiveExpr :: PsExpr -> Repl ()
+evalInteractiveExpr expr = do
   -- type check the expression
-  tenv <- getTcEnv
+  tenv <- getInteractiveTcEnv
   (ty, expr') <- hoist (typeCheckExpr tenv expr)
   -- if the expression is IO, we can evaluate it right away, but if its
   -- effectful we want to wrap it using a do expression + print
-  let wrap_pure t e  = DoE [ExprStmt (VarE (mkVar "print", t :->: ioT unitT) `AppE` e)]
   let wrap_io_unit e = DoE [ExprStmt e]
   let wrap_io t e    = DoE [BindStmt (mkVar "_x", t) e,
-                            ExprStmt (VarE (mkVar "print", t :->: ioT unitT) `AppE` VarE (mkVar "_x", t))]
+                            ExprStmt (VarE (mkVar "print", t :->: ioT unitT)
+                                      `AppE` VarE (mkVar "_x", t))]
+  let wrap_pure t e  = DoE [ExprStmt (VarE (mkVar "print", t :->: ioT unitT)
+                                      `AppE` e)]
   let wrapped =
         case ty of
           Forall _ (IOT (TupT [])) -> wrap_io_unit expr'
-          Forall _ (IOT t)         -> wrap_io t expr'
-          Forall _ t               -> wrap_pure t expr'
+          Forall _ (IOT t)         -> wrap_io    t expr'
+          Forall _ t               -> wrap_pure  t expr'
   -- finally, we can evaluate it
-  venv <- getEvalEnv
   penv <- getPrimEnv
+  venv <- getInteractiveEvalEnv
   res  <- liftIO $ evaluate venv penv wrapped
   void (hoist res)
 
@@ -120,8 +126,8 @@ processExpr expr = do
 evalCmd :: String -> Repl ()
 evalCmd input = do
   hoist (parseStdin interactive input) >>= \case
-    Left  expr -> processExpr expr
-    Right decl -> processDecl Nothing decl
+    Left  expr -> evalInteractiveExpr expr
+    Right decl -> evalInteractiveDecl decl
 
 ----------------------------------------
 -- | Commands
@@ -132,7 +138,7 @@ loadCmd :: [String] -> Repl ()
 loadCmd input = continueAfterError $ do
   case input of
     []     -> unloadAllModules >> say "Ok, no modules loaded."
-    [path] -> processFile True (takeBaseName path) path
+    [path] -> processModule True (takeBaseName path) path
     _      -> say "Load modules one by one!"
 
 -- :reload
@@ -140,7 +146,7 @@ reloadCmd :: [String] -> Repl ()
 reloadCmd input = continueAfterError $ do
   curr <- getCurrentModule
   case (input, curr) of
-    ([], Just mod) -> processFile True (module_name mod) (module_path mod)
+    ([], Just mod) -> processModule True (module_name mod) (module_path mod)
     ([], Nothing)  -> say $ "Nothing to reload"
     _              -> say $ "This command accepts no arguments"
 
@@ -167,7 +173,7 @@ typeCmd :: [String] -> Repl ()
 typeCmd input = continueAfterError $ do
   let str = unwords input
   expr <- hoist (parseExpr interactive str)
-  tenv <- getTcEnv
+  tenv <- getInteractiveTcEnv
   (tsc, expr')  <- hoist (typeCheckExpr tenv expr)
   say $ pretty expr' <> " : " <> pretty tsc
 
@@ -237,23 +243,24 @@ launchEditor editor path = do
   -- if the file was previously loaded, then reload it
   let modname = takeBaseName path
   when (modname `Map.member` loaded) $ do
-    processFile True modname path
+    processModule True modname path
 
 -- :echo
 echoCmd :: [String] -> Repl ()
 echoCmd input = continueAfterError $ do
   hoist (parseStdin interactive (unwords input)) >>= \case
     Left expr -> do
-      tenv <- getTcEnv
+      tenv <- getInteractiveTcEnv
       (_, expr') <- hoist (typeCheckExpr tenv expr)
       say $ pretty expr'
     Right (BindD bind) -> do
       let (isVal, var, expr) = splitBind bind
       -- type check the body
-      tenv <- getTcEnv
+      tenv <- getInteractiveTcEnv
       (tsc, expr') <- hoist (typeCheckExpr tenv expr)
-      ty <- hoist (instantiate' tsc)
+      let ty = instantiate' tsc
       say $ pretty (mergeBind isVal (var,  ty) expr')
+      say $ ": " <> pretty ty
 
 ----------------------------------------
 -- | Tab completion
@@ -280,7 +287,7 @@ launchRepl input =
     (initRepl input)
 
 loadPrelude :: Repl ()
-loadPrelude = processFile False preludeName preludePath
+loadPrelude = processModule False preludeName preludePath
 
 initRepl :: Maybe FilePath -> Repl ()
 initRepl input = do
@@ -288,7 +295,7 @@ initRepl input = do
   loadPrelude
   case input of
     Nothing   -> return ()
-    Just file -> processFile True (takeBaseName file) file
+    Just file -> processModule True (takeBaseName file) file
 
 replCommands :: [(String, [String] -> Repl ())]
 replCommands =

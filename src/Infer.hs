@@ -64,8 +64,11 @@ instantiate (Forall as t) = do
   let s = fromList (zip as as')
   return (apply s t)
 
-instantiate' :: Scheme -> Either FlimsyError Type
-instantiate' tsc = runInfer Env.empty (instantiate tsc)
+instantiate' :: Scheme -> Type
+instantiate' tsc =
+  case runInfer Env.empty (instantiate tsc) of
+    Left err -> error (show err)
+    Right ty -> ty
 
 -- | Extend type environment
 inExtEnv :: (Var, Scheme) -> Infer a -> Infer a
@@ -73,34 +76,57 @@ inExtEnv (var, tsc) m = do
   let scope e = Env.remove e var `Env.extend` (var, tsc)
   local scope m
 
+generalize :: TcEnv -> Type -> Scheme
+generalize env t = Forall as t
+  where
+    as = toList (ftv t `difference` ftv env)
+
+generalize' :: Type -> Scheme
+generalize' t = Forall (toList (ftv t)) t
+
+normalize :: Scheme -> Scheme
+normalize (Forall _ body) =
+  Forall (snd <$> ord) (normtype body)
+  where
+    ord = zip (toList (ftv body)) letters
+
+    normtype (VarT a) =
+      case lookup a ord of
+        Just x  -> VarT x
+        Nothing -> error "normalize: type variable not in signature"
+    normtype (ConT a) = ConT a
+    normtype (a :->: b) = normtype a :->: normtype b
+    normtype (a :+: b) = normtype a :+: normtype b
+    normtype (TupT ts) = TupT (normtype <$> ts)
+    normtype (ListT t) = ListT (normtype t)
+    normtype (IOT t)   = IOT (normtype t)
+
+
+-- | Canonicalize and return the polymorphic toplevel type
+closeOver :: Type -> Scheme
+closeOver = normalize . generalize Env.empty
+
+-- | Type variables supply
+letters :: [TVar]
+letters = mkTVar <$>
+  [ [v] | v <- ['a' .. 'z']] <>
+  [ c : show n | c <- ['a' .. 'z'], n <- [0 :: Int ..]]
+
+
 ----------------------------------------
--- | Type checking full modules
+-- | Inferring type of binds
 ----------------------------------------
 
--- typeCheckModule :: TcEnv -> PsModule -> Either FlimsyError (TcModule, [TcBind])
--- typeCheckModule env mod = do
---   let vars = Env.keys env
---   let decls = module_decls mod
---   let decl = concatMap (\(BindD bind) -> let (_, var, _) = splitBind bind in [var]) decls
-
+inferBind :: PsBind -> Infer (Type, [Constraint], TcBind)
+inferBind bind = do
+  let (isVal, var, expr) = splitBind bind
+  (ty, cs, expr') <- inferExpr expr
+  let bind' = mergeBind isVal (var, ty) expr'
+  return (ty, cs, bind')
 
 ----------------------------------------
 -- | Inferring type of expressions
 ----------------------------------------
-
-typeCheckExpr :: TcEnv -> PsExpr -> Either FlimsyError (Scheme, TcExpr)
-typeCheckExpr env expr = do
-  (ty, cs, expr') <- runInfer env (inferExpr expr)
-  case runSolve cs of
-    Left err -> throwError (err :@ expr)
-    Right subst -> return (closeOver (apply subst ty), fmap (apply subst) <$> expr')
-
-constraintsOfExpr :: TcEnv -> PsExpr -> Either FlimsyError ([Constraint], Subst, Type, Scheme)
-constraintsOfExpr env expr = do
-  (ty, cs, _) <- runInfer env (inferExpr expr)
-  case runSolve cs of
-    Left err -> throwError (err :@ expr)
-    Right subst -> return (cs, subst, ty, closeOver (apply subst ty))
 
 inferExpr :: PsExpr -> Infer (Type, [Constraint], TcExpr)
 inferExpr expr = do
@@ -311,39 +337,3 @@ inferDo (ExprStmt e : xs) = do
   return (txs, cse <> csxs <> cio, (ExprStmt e' : xs'))
 inferDo _ = do
   throwError (InternalTcError "inferDo: unexpected input")
-
-----------------------------------------
--- | Helpers
-----------------------------------------
-
--- | Canonicalize and return the polymorphic toplevel type
-closeOver :: Type -> Scheme
-closeOver = normalize . generalize Env.empty
-
--- | Type variables supply
-letters :: [TVar]
-letters = mkTVar <$>
-  [ [v] | v <- ['a' .. 'z']] <>
-  [ c : show n | c <- ['a' .. 'z'], n <- [0 :: Int ..]]
-
-generalize :: TcEnv -> Type -> Scheme
-generalize env t = Forall as t
-  where
-    as = toList (ftv t `difference` ftv env)
-
-normalize :: Scheme -> Scheme
-normalize (Forall _ body) =
-  Forall (snd <$> ord) (normtype body)
-  where
-    ord = zip (toList (ftv body)) letters
-
-    normtype (VarT a) =
-      case lookup a ord of
-        Just x  -> VarT x
-        Nothing -> error "normalize: type variable not in signature"
-    normtype (ConT a) = ConT a
-    normtype (a :->: b) = normtype a :->: normtype b
-    normtype (a :+: b) = normtype a :+: normtype b
-    normtype (TupT ts) = TupT (normtype <$> ts)
-    normtype (ListT t) = ListT (normtype t)
-    normtype (IOT t)   = IOT (normtype t)

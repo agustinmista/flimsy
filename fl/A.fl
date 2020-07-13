@@ -1,0 +1,3 @@
+module A
+
+val foo = 42
