@@ -151,6 +151,9 @@ setEditor e = modify' $ \st -> st { repl_editor = e }
 -- | Transformations over the Repl state
 ----------------------------------------
 
+registerSCCs :: (MonadState ReplState m, MonadIO m) => ModuleName -> [SCC (Decl (Var, Type), [Var], Scheme)] -> m ()
+registerSCCs modname = mapM_ (registerSCC modname)
+
 -- | Store/update the binds of a strongly connected component of a module
 -- The tricky part is how to deal with cyclic (mutually recursive) definitions
 registerSCC :: (MonadState ReplState m, MonadIO m) => ModuleName -> SCC (Decl (Var, Type), [Var], Scheme) -> m ()

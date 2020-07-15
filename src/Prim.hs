@@ -28,8 +28,13 @@ primitives = Env.fromList
   , prim "flimsy_prim_int_sub" "(Int,Int) -> Int" (flimsy_prim_int_binop (-))
   , prim "flimsy_prim_int_mul" "(Int,Int) -> Int" (flimsy_prim_int_binop (*))
   , prim "flimsy_prim_int_div" "(Int,Int) -> Int" (flimsy_prim_int_binop div)
+  -- double primitives
+  , prim "flimsy_prim_double_add" "(Double,Double) -> Double" (flimsy_prim_double_binop (+))
+  , prim "flimsy_prim_double_sub" "(Double,Double) -> Double" (flimsy_prim_double_binop (-))
+  , prim "flimsy_prim_double_mul" "(Double,Double) -> Double" (flimsy_prim_double_binop (*))
+  , prim "flimsy_prim_double_div" "(Double,Double) -> Double" (flimsy_prim_double_binop (/))
   -- list primitives
-  , prim "flimsy_prim_list_cons" "(a, [a]) -> [a]" flimsy_prim_list_cons
+  , prim "flimsy_prim_list_cons" "(a,[a]) -> [a]" flimsy_prim_list_cons
   -- io primitives
   , prim "flimsy_prim_io_getline" "() -> IO String" flimsy_prim_io_getline
   , prim "flimsy_prim_io_putstr"  "String -> IO ()" flimsy_prim_io_putstr
@@ -37,6 +42,8 @@ primitives = Env.fromList
   , prim "flimsy_prim_io_return"  "a -> IO a"       flimsy_prim_io_return
   -- show/read primitives
   , prim "flimsy_prim_show"       "a -> String"     flimsy_prim_show
+  -- eq primitive
+  , prim "flimsy_prim_eq"         "(a,a) -> Bool"   flimsy_prim_eq
   ]
 
 ----------------------------------------
@@ -50,11 +57,20 @@ prim name tystr body = (mkVar name, Prim (closeOver ty) (PrimRunner body))
 pattern Int :: Int -> Value
 pattern Int n = LitV (IntL n)
 
--- pattern Bool :: Bool -> Value
--- pattern Bool b = LitV (BoolL b)
+pattern Double :: Double -> Value
+pattern Double n = LitV (DoubleL n)
+
+pattern Bool :: Bool -> Value
+pattern Bool b = LitV (BoolL b)
 
 pattern String :: String -> Value
 pattern String s = LitV (StringL s)
+
+pattern Char :: Char -> Value
+pattern Char c = LitV (CharL c)
+
+pattern Unit :: Value
+pattern Unit = TupV []
 
 pattern (:*:) :: Value -> Value -> Value
 pattern (:*:) x y = TupV [x, y]
@@ -71,24 +87,33 @@ flimsy_prim_int_binop f (x :*: y) = do
 flimsy_prim_int_binop _ _ =
   throwError (MarshallingError "flimsy_prim_int_binop")
 
+flimsy_prim_double_binop :: (Double -> Double -> Double) -> Value -> Eval Value
+flimsy_prim_double_binop f (x :*: y) = do
+  Double x' <- whnf x
+  Double y' <- whnf y
+  return (Double (f x' y'))
+flimsy_prim_double_binop _ _ =
+  throwError (MarshallingError "flimsy_prim_double_binop")
+
+
 flimsy_prim_io_getline :: Value -> Eval Value
-flimsy_prim_io_getline (TupV []) = return $ IOV $ do
+flimsy_prim_io_getline Unit = return $ IOV $ do
   l <- getLine
-  return (LitV (StringL l))
+  return (String l)
 flimsy_prim_io_getline _ =
   throwError (MarshallingError "flimsy_prim_io_getline")
 
 flimsy_prim_io_putstr :: Value -> Eval Value
-flimsy_prim_io_putstr (LitV (StringL l)) = return $ IOV $ do
+flimsy_prim_io_putstr (String l) = return $ IOV $ do
   putStr l
-  return (TupV [])
+  return Unit
 flimsy_prim_io_putstr _ =
   throwError (MarshallingError "flimsy_prim_io_putstr")
 
 flimsy_prim_io_putline :: Value -> Eval Value
-flimsy_prim_io_putline (LitV (StringL l)) = return $ IOV $ do
+flimsy_prim_io_putline (String l) = return $ IOV $ do
   putStrLn l
-  return (TupV [])
+  return Unit
 flimsy_prim_io_putline _ =
   throwError (MarshallingError "flimsy_prim_io_putline")
 
@@ -133,10 +158,10 @@ flimsy_prim_show val = do
       return (String ("(" <> s <> ")"))
     SumV (Left v) -> do
       String v' <- flimsy_prim_show v
-      return (String ("left " <> v'))
+      return (String ("left (" <> v' <> ")"))
     SumV (Right v) -> do
       String v' <- flimsy_prim_show v
-      return (String ("right " <> v'))
+      return (String ("right (" <> v' <> ")"))
     NilV -> do
       return (String "[]")
     ConsV hd tl -> do
@@ -159,3 +184,28 @@ flimsy_prim_show val = do
       return (String "<<closure>>")
     ThunkV th -> do
       runThunk th >>= flimsy_prim_show
+
+flimsy_prim_eq :: Value -> Eval Value
+flimsy_prim_eq (x :*: y) = do
+  case (x, y) of
+    (ThunkV th, _) -> runThunk th >>= \x' -> flimsy_prim_eq (x' :*: y)
+    (_, ThunkV th) -> runThunk th >>= \y' -> flimsy_prim_eq (x :*: y')
+    (LitV l1, LitV l2) -> return (Bool (l1 == l2))
+    (ConV c1, ConV c2) -> return (Bool (c1 == c2))
+    (TupV [], TupV []) -> return (Bool True)
+    (TupV (v:vs), TupV (v':vs')) -> do
+      Bool b <- flimsy_prim_eq (v :*: v')
+      if b
+        then flimsy_prim_eq (TupV vs :*: TupV vs')
+        else return (Bool False)
+    (SumV (Left v), SumV (Left v')) -> flimsy_prim_eq (v :*: v')
+    (SumV (Right v), SumV (Right v')) -> flimsy_prim_eq (v :*: v')
+    (NilV, NilV) -> return (Bool True)
+    (ConsV v vs, ConsV v' vs') -> do
+      Bool b <- flimsy_prim_eq (v :*: v')
+      if b
+        then flimsy_prim_eq (vs :*: vs')
+        else return (Bool False)
+    _ -> return (Bool False)
+flimsy_prim_eq _ =
+  throwError (MarshallingError "flimsy_prim_eq")

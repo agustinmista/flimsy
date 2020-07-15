@@ -243,10 +243,9 @@ instance Pretty FlimsyError where
   ppr _ (ParseError s) =
     text "parse error!"
     $+$ text (show s)
-  ppr _ (CyclicDeclarations vs) =
-    text "dependency error!"
-    $+$ text "declarations form a cycle:"
-    $+$ hsep (punctuate (text " ->") (pp <$> (last vs : vs)))
+  ppr _ (DuplicatedDecls var) =
+    text "duplicated declarations!"
+    $+$ pp var <+> text "is defined twice"
   ppr _ (UnificationFail t1 t2) =
     text "type error!"
     $+$ text "could not match expected type:"

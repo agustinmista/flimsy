@@ -1,3 +1,38 @@
+1.0 ./ 2.0
+1 ./ 2
+(1, bottom) == (2, "foo")
+val bottom = bottom
+val bottom = botton
+botom
+(1+3) == (2+2)
+1 == (2+2)
+:t (==)
+1 == "foo"
+1 == 2
+1 == 1
+1/0
+filter (fn x => case x of | 1 => false | _ => true) [1,2,3,1,1,2,3,4]
+:t filter (fn x => case x of | 1 => false | _ => true)
+filter (fn x => case x of | 1 => false | _ => true)
+:l fl/Test.fl 
+:browse Prelude
+:browse Prelude
+:l fl/Test.fl 
+:l fl/Test.fl 
+:l lib/Prelude.fl 
+:browse Prelude
+:browse Test
+:l fl/Test.fl 
+:l fl/Test.fl 
+:e fl/Test.fl 
+:l fl/Test.fl 
+:! mv fl/test.fl fl/Test.fl
+:l fl/test.fl 
+:e fl/test.fl 
+:l fl/test.fl 
+:e fl/test.fl 
+fun fib x = x + 2
+:browse Prelude
 main
 odd 30
 :browse OddEven
@@ -63,38 +98,3 @@ val nats = 0 :: map (fn x => x + 1) nats
 :load fl/A.fl 
 :browse Prelude
 10
-nats
-val nats = 0 :: map (fn x => x + 1) nats 
-nats
-:echo take 10 nats
-take 10 nats
-take
-:t nats
-val nats = 0 :: map (fn x => x + 1) nats 
-putLine "aaa"
-10
-:browse Prelude
-:browse Prelude
-:browse Prelude
-:browse Prelude
-:browse Wrong
-:l fl/Wrong.fl 
-:browse Wrong
-:l fl/Wrong.fl 
-z
-:browse Wrong
-:l fl/Wrong.fl 
-:browse Wrong
-:l fl/Wrong.fl 
-snd (10, 20)
-putLine "aaa"
-:info
-:t fn x => x
-:t snd (10, 20)
-:t snd
-1
-take
-:browse 
-:browse 
-:browse 
-:info

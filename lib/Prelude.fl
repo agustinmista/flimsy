@@ -1,29 +1,51 @@
 module Prelude
 
+# ----------------------------------------
 # Binding primitive operations
+# ----------------------------------------
+
 fun (+) x y = flimsy_prim_int_add (x,y)
 fun (-) x y = flimsy_prim_int_sub (x,y)
 fun (*) x y = flimsy_prim_int_mul (x,y)
 fun (/) x y = flimsy_prim_int_div (x,y)
 
-fun getLine   = flimsy_prim_io_getline ()
-fun putLine x = flimsy_prim_io_putline x
-fun return  x = flimsy_prim_io_return x
+fun (.+) x y = flimsy_prim_double_add (x,y)
+fun (.-) x y = flimsy_prim_double_sub (x,y)
+fun (.*) x y = flimsy_prim_double_mul (x,y)
+fun (./) x y = flimsy_prim_double_div (x,y)
 
 fun (::) x xs = flimsy_prim_list_cons (x,xs)
 
+fun getline   = flimsy_prim_io_getline ()
+fun putstr  x = flimsy_prim_io_putstr x
+fun putline x = flimsy_prim_io_putline x
+fun return  x = flimsy_prim_io_return x
+
 fun show x = flimsy_prim_show x
 
-val pi = 3.14
+fun (==) x y = flimsy_prim_eq (x,y)
 
-fun print x = putLine (show x)
+# ----------------------------------------
+# IO operations
+# ----------------------------------------
+
+fun print x = putline (show x)
 fun print_io io = do { x <- io; print x }
 
+# ----------------------------------------
+# Tuple operations
+# ----------------------------------------
 
 fun fst tup = case tup of (x,_) => x
 fun snd tup = case tup of (_,y) => y
 
-val bottom = bottom
+fun fst3 tup = case tup of (x,_,_) => x
+fun snd3 tup = case tup of (_,y,_) => y
+fun thd3 tup = case tup of (_,_,z) => z
+
+# ----------------------------------------
+# List operations
+# ----------------------------------------
 
 fun map f l =
   case l of
@@ -36,25 +58,18 @@ fun take n l =
   | (_, [])     => []
   | (n, [x|xs]) => x :: take (n - 1) xs
 
-fun zipWith f l1 l2 =
-  case (l1, l2) of
-  | ([], _)          => []
-  | (_, [])          => []
-  | ([x|xs], [y|ys]) => f x y :: zipWith f xs ys
+fun zipWith f xs ys =
+  case (xs, ys) of
+  | ([],      _)       => []
+  | (_,       [])      => []
+  | ([x|xs'], [y|ys']) => f x y :: zipWith f xs' ys'
 
-val main = do
-  { x <- putLine "foo"
-  ; y <- putLine "bar"
-  ; return (x, y)
-  }
+fun zip xs ys =
+  zipWith (fn x y => (x, y))
 
-fun fact n =
-  case n of
-  | 0 => 1
-  | n => n * fact (n - 1)
-
-fun fib n =
-  case n of
-  | 0 => 1
-  | 1 => 1
-  | n => fib (n-1) + fib (n-2)
+fun filter p l =
+  case l of
+  | [] => []
+  | [x|xs] => if p x
+              then x :: filter p xs
+              else filter p xs

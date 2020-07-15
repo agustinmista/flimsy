@@ -14,7 +14,7 @@ data FlimsyError
   -- Parsing errors
   = ParseError ParseError
   -- Escape errors
-  | CyclicDeclarations [Var]
+  | DuplicatedDecls Var
   -- Type inference errors
   | InternalTcError String
   | UnificationFail Type Type

@@ -65,11 +65,11 @@ processModule update modname path = do
   -- parse the input file
   contents <- hoist =<< liftIO (readSourceFile path)
   psMod <- hoist (parseModule path contents)
-  -- compute a topological sort of the declarations in the target file
+  -- type check the module and return a list of SCCs of binds to register
   tcEnv <- getBaseTcEnv
   (tcMod, tcSCCs) <- hoist (typeCheckModule tcEnv psMod)
   -- register the binds in the module in the interactive environment
-  mapM_ (registerSCC modname) tcSCCs
+  registerSCCs modname tcSCCs
   -- add the file to the list of loaded ones
   loaded <- registerLoadedModule tcMod
   -- set the input as current file and report the loaded files

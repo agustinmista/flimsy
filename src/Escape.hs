@@ -12,27 +12,26 @@ import qualified Data.Set as Set
 
 import Var
 import Syntax
-import Error
 
 ----------------------------------------
 -- | Dependency analysis
 ----------------------------------------
 
 calculateSSCs :: [PsDecl] -> [SCC (PsDecl, Var, [Var])]
-calculateSSCs decls = stronglyConnCompR (node <$> decls)
+calculateSSCs decls = stronglyConnCompR (mkGraphNode <$> decls)
 
-tryTopSort :: [PsDecl] -> Either FlimsyError [PsDecl]
-tryTopSort decls = foldSCCs sccs
-  where
-    sccs = stronglyConnComp (node <$> decls)
-    declVar (BindD bind) = let (_,v,_) = splitBind bind in v
+-- tryTopSort :: [PsDecl] -> Either FlimsyError [PsDecl]
+-- tryTopSort decls = foldSCCs sccs
+--   where
+--     sccs = stronglyConnComp (mkGraphNode <$> decls)
+--     declVar (BindD bind) = bindName bind
 
-    foldSCCs []                  = Right []
-    foldSCCs (CyclicSCC vs : _)  = Left (CyclicDeclarations (declVar <$> vs))
-    foldSCCs (AcyclicSCC v : xs) = (v:) <$> foldSCCs xs
+--     foldSCCs []                  = Right []
+--     foldSCCs (CyclicSCC vs : _)  = Left (CyclicDeclarations (declVar <$> vs))
+--     foldSCCs (AcyclicSCC v : xs) = (v:) <$> foldSCCs xs
 
-node :: PsDecl -> (PsDecl, Var, [Var])
-node (BindD bind) = (BindD bind, var, Set.toList escaped)
+mkGraphNode :: PsDecl -> (PsDecl, Var, [Var])
+mkGraphNode (BindD bind) = (BindD bind, var, Set.toList escaped)
   where
     (_, var, expr) = splitBind bind
     escaped = escapedVars expr

@@ -1,0 +1,7 @@
+module Test
+
+fun f x = x + x
+
+# fun f y = y * y
+
+fun fib x = f x + x 
