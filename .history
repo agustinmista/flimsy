@@ -1,3 +1,22 @@
+take 25 xs
+take 25' xs
+take 20 xs
+take 100 xs
+take 10 xs
+val xs = 1 :: map (fn n => n * 2) xs
+take 10 xs
+val xs = 1 :: map (fn n => n + 1) xs
+xs <- 0 :: map (fn n => n + 1) xs
+xs = 0 :: map (fn n => n + 1) xs
+let xs = 1 :: map (fn n => n + 1) xs
+filter (fn x => fst x == 10) [(10, "aa"), (20, "bb"), (10, "cc")]
+:t filter (fn x => fst x == 10) [(10, "aa"), (20, "bb"), (10, "cc")]
+:t filter (fn x => fst x == 10)
+:t filter (fn x => fst x == 10) [10, 20,30,40,10,20]
+:t filter (fn x => x == 10) [10, 20,30,40,10,20]
+:t filter (fn x => x == 10)
+filter (fn x => x == 10)
+filter (fn x => x > 10)
 1.0 ./ 2.0
 1 ./ 2
 (1, bottom) == (2, "foo")
@@ -79,22 +98,3 @@ bar
 :t odd
 odd 2
 :l fl/OddEven.fl 
-:l fl/OddEven.fl 
-:l fl/OddEven.fl 
-:l fl/OddEven.fl 
-:l fl/OddEven.fl 
-:t main
-:browse Do
-:l fl/Do.fl 
-:browse A Prelude
-:browse A
-:l fl/B.fl 
-foo
-:l fl/A.fl 
-take 10 nats
-val nats = 0 :: map (fn x => x + 1) nats 
-:load fl/B.fl 
-:browse A
-:load fl/A.fl 
-:browse Prelude
-10

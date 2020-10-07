@@ -29,7 +29,7 @@ fun (==) x y = flimsy_prim_eq (x,y)
 # IO operations
 # ----------------------------------------
 
-fun print x = putline (show x)
+fun print x     = putline (show x)
 fun print_io io = do { x <- io; print x }
 
 # ----------------------------------------
