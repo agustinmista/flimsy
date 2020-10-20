@@ -65,7 +65,7 @@ fun zipWith f xs ys =
   | ([x|xs'], [y|ys']) => f x y :: zipWith f xs' ys'
 
 fun zip xs ys =
-  zipWith (fn x y => (x, y))
+  zipWith (fn x y => (x, y)) xs ys
 
 fun filter p l =
   case l of

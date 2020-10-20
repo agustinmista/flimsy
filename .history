@@ -1,3 +1,21 @@
+:t zip
+zip [] []
+:e lib/Prelude.fl 
+zip [] []
+:e lib/Prelude.fl 
+zip
+:t  zip
+:t zipWith
+:t zipWith getline
+:t getline
+:echo filter (fn x => x == 10)
+:echo 2 + 2
+:echo
+1 :: []
+:t do { putstr "foo\n" } 
+do { putstr "foo\n" } 
+do { putstr "foo" } 
+2 + 2
 take 25 xs
 take 25' xs
 take 20 xs
@@ -79,22 +97,4 @@ even 30
 :l fl/OddEven.fl 
 even 30
 odd 30
-:l fl/OddEven.fl 
-:l fl/OddEven.fl 
-:l fl/OddEven.fl 
-:l fl/OddEven.fl 
-:l fl/OddEven.fl 
-odd 10
-bar
-foo
-:l fl/OddEven.fl 
-:l fl/OddEven.fl 
-:l fl/OddEven.fl 
-:l fl/OddEven.fl 
-bar
-:t bar
-:t even 
-:t :t even
-:t odd
-odd 2
 :l fl/OddEven.fl 
