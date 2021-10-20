@@ -1,8 +1,8 @@
 module Do
 
 val main = do 
-  { x <- getLine
-  ; y <- getLine
-  ; putLine y
-  ; putLine x
+  { x <- getline
+  ; y <- getline
+  ; putline y
+  ; putline x
   }
